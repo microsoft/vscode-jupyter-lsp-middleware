@@ -2,10 +2,26 @@
   "name": "vscode-jupyter-lsp-middleware",
   "version": "0.1.0",
   "description": "",
-  "main": "index.js",
+  "main": "out/extension.js",
+  "publisher": "ms-vscode",
+  "enableProposedApi": true,
+  "capabilities": {
+    "untrustedWorkspaces": {
+        "supported": true
+    },
+    "virtualWorkspaces": {
+        "supported": true
+    }
+  },
+  "engines": {
+    "vscode": "^1.57.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
   "scripts": {
-    "test": "npm run compile && mocha --ui tdd ./out/test",
     "compile": "tsc",
+    "test": "npm run compile && node ./out/test/runTest.js",
     "download-api": "vscode-dts dev",
     "postdownload-api": "vscode-dts main",
     "postinstall": "npm run download-api"
@@ -17,13 +33,16 @@
     "uuid": "^3.3.2"
   },
   "devDependencies": {
+    "@types/glob": "^7.1.1",
     "@types/fs-extra": "^5.0.1",
     "@types/mocha": "^8.2.3",
     "@types/uuid": "^3.4.3",
     "@types/node": "^12.19.12",
     "@types/vscode": "~1.53.0",
+    "glob": "^7.1.4",
     "typescript": "^4.3.5",
     "vscode-dts": "^0.3.1",
-    "mocha": "^8.2.1"
+    "mocha": "^8.2.1",
+    "vscode-test": "^1.3.0"
   }
 }
