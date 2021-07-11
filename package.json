@@ -5,6 +5,7 @@
   "main": "out/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "prepare": "npm run compile",
     "compile": "tsc",
     "copyTestAssets": "cp src/test/package.json out/test/package.json",
     "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
