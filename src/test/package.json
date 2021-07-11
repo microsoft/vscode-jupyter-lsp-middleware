@@ -1,0 +1,23 @@
+{
+  "name": "vscode-jupyter-lsp-middleware",
+  "version": "0.1.0",
+  "description": "",
+  "main": "./extension.js",
+  "publisher": "ms-vscode",
+  "enableProposedApi": true,
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": true
+    }
+  },
+  "engines": {
+    "vscode": "^1.57.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "license": "MIT"
+}

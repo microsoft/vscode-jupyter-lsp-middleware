@@ -2,26 +2,12 @@
   "name": "vscode-jupyter-lsp-middleware",
   "version": "0.1.0",
   "description": "",
-  "main": "out/extension.js",
-  "publisher": "ms-vscode",
-  "enableProposedApi": true,
-  "capabilities": {
-    "untrustedWorkspaces": {
-        "supported": true
-    },
-    "virtualWorkspaces": {
-        "supported": true
-    }
-  },
-  "engines": {
-    "vscode": "^1.57.0"
-  },
-  "activationEvents": [
-    "*"
-  ],
+  "main": "out/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "compile": "tsc",
-    "test": "npm run compile && node ./out/test/runTest.js",
+    "copyTestAssets": "cp src/test/package.json out/test/package.json",
+    "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
     "download-api": "vscode-dts dev",
     "postdownload-api": "vscode-dts main",
     "postinstall": "npm run download-api"

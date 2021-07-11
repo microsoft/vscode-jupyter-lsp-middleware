@@ -71,7 +71,7 @@ import { NotebookConverter } from './notebookConverter';
  * It is responsible for generating a concatenated document of all of the cells in a notebook and using that as the
  * document for LSP requests.
  */
-export class NotebookMiddlewareAddon implements Middleware, Disposable {
+export default class NotebookMiddlewareAddon implements Middleware, Disposable {
     private converter: NotebookConverter;
 
     private didChangeCellsDisposable: Disposable;
@@ -427,9 +427,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     ): ProviderResult<
         | Range
         | {
-              range: Range;
-              placeholder: string;
-          }
+            range: Range;
+            placeholder: string;
+        }
     > {
         if (isNotebookCell(document.uri)) {
             this.traceInfo('prepareRename not currently supported for notebooks');
