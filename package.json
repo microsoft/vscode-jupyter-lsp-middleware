@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "",
   "main": "out/index.js",
-  "types": "dist/index.d.ts",
+  "types": "out/index.d.ts",
   "scripts": {
     "prepare": "npm run compile",
     "compile": "tsc",
