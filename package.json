@@ -7,7 +7,7 @@
   "scripts": {
     "prepare": "npm run compile",
     "compile": "tsc",
-    "copyTestAssets": "cp src/test/package.json out/test/package.json",
+    "copyTestAssets": "node ./scripts/prepareTest.js",
     "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
     "download-api": "vscode-dts dev",
     "postdownload-api": "vscode-dts main",
@@ -20,16 +20,16 @@
     "uuid": "^3.3.2"
   },
   "devDependencies": {
-    "@types/glob": "^7.1.1",
     "@types/fs-extra": "^5.0.1",
+    "@types/glob": "^7.1.1",
     "@types/mocha": "^8.2.3",
-    "@types/uuid": "^3.4.3",
     "@types/node": "^12.19.12",
+    "@types/uuid": "^3.4.3",
     "@types/vscode": "~1.53.0",
     "glob": "^7.1.4",
+    "mocha": "^8.2.1",
     "typescript": "^4.3.5",
     "vscode-dts": "^0.3.1",
-    "mocha": "^8.2.1",
     "vscode-test": "^1.3.0"
   }
 }
