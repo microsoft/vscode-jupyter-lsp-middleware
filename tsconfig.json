@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    "moduleResolution": "node",
     "target": "es2018",
     "outDir": "out", /* Specify the root directory of input files. Use to control the output directory structure with --outDir. */
     "lib": [
@@ -20,7 +21,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "resolveJsonModule": true,
     "removeComments": true,
     "declaration": true
   },
