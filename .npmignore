@@ -1,3 +1,6 @@
 vscode.d.ts
 vscode.proposed.d.ts
 out
+node_modules
+.vscode-test
+.vscode
