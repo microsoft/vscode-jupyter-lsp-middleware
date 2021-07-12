@@ -10,7 +10,6 @@
     "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
     "download-api": "vscode-dts dev",
     "postdownload-api": "vscode-dts main",
-    "postinstall": "npm run download-api",
     "webpack": "webpack --mode production",
     "webpack-dev": "webpack --mode development --watch"
   },
