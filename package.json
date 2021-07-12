@@ -13,7 +13,7 @@
     "postdownload-api": "vscode-dts main",
     "postinstall": "npm run download-api"
   },
-  "author": "",
+  "author": "rebornix",
   "license": "MIT",
   "dependencies": {
     "vscode-languageclient": "7.0.0",
