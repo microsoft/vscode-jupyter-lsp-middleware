@@ -1,6 +1,6 @@
 {
   "name": "vscode-jupyter-lsp-middleware",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,7 +10,7 @@
     "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
     "download-api": "vscode-dts dev",
     "postdownload-api": "vscode-dts main",
-    "webpack": "webpack --mode production",
+    "webpack": "webpack --mode production && node ./scripts/optimizeTypings.js",
     "webpack-dev": "webpack --mode development --watch"
   },
   "author": "rebornix",
