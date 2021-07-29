@@ -132,7 +132,12 @@ export class InteractiveConcatTextDocument implements IConcatTextDocument {
     getText(range?: Range): string {
         if (!range) {
             let result = '';
-            result += `${this._concatTextDocument.getText()}\n${this._input?.getText() ?? ''}`;
+            if (this._lineCounts[0] === 0) {
+                // empty
+                return this._input?.getText() ?? '';
+            } else {
+                result += `${this._concatTextDocument.getText()}\n${this._input?.getText() ?? ''}`;
+            }
             return result;
         }
 
@@ -203,9 +208,9 @@ export class InteractiveConcatTextDocument implements IConcatTextDocument {
         const start = positionOrRange.start.line;
         if (start >= this._lineCounts[0]) {
             // this is the inputbox
-            const offset = Math.max(0, start - this._lineCounts[0] - 1);
+            const offset = start - this._lineCounts[0];
             const startPosition = new Position(offset, positionOrRange.start.character);
-            const endOffset = Math.max(0, positionOrRange.end.line - this._lineCounts[0] - 1);
+            const endOffset = positionOrRange.end.line - this._lineCounts[0];
             const endPosition = new Position(endOffset, positionOrRange.end.character);
 
             // TODO@rebornix !
