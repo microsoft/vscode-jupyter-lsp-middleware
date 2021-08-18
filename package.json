@@ -1,7 +1,7 @@
 {
-  "name": "vscode-jupyter-lsp-middleware",
-  "version": "0.1.3",
-  "description": "",
+  "name": "@vscode/jupyter-lsp-middleware",
+  "version": "0.2.0",
+  "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -15,7 +15,7 @@
     "webpack-link": "webpack --mode development && node ./scripts/optimizeTypings.js",
     "webpack-dev": "webpack --mode development --watch"
   },
-  "author": "rebornix",
+  "author": "Visual Studio Code Team",
   "license": "MIT",
   "dependencies": {
     "uuid": "^3.3.2",
