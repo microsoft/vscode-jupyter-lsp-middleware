@@ -1,0 +1,33 @@
+# Publish to npm
+name: Build & Publish
+
+permissions:
+  deployments: write
+
+on:
+  push:
+    path:
+      # Requires package.json update (otherwise same version)
+      - package.json
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 12.14.1
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: ${{env.NODE_VERSION}}
+          registry-url: "https://registry.npmjs.org"
+      - run: npm install
+        name: npm install
+      - run: npm run webpack
+        name: webpack for production
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
