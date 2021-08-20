@@ -6,9 +6,8 @@ permissions:
 
 on:
   push:
-    path:
-      # Requires package.json update (otherwise same version)
-      - package.json
+    branches:
+      - main
   workflow_dispatch:
 
 env:
