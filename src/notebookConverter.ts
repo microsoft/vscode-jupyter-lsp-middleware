@@ -128,7 +128,10 @@ export class NotebookConverter implements Disposable {
         // mark the cell is closed (which contains `document`)
         // when all cells are closed, we should return the concatDocument, so the language server will close it and clear diagnostics
         if (concatDocument && concatDocument.isComposeDocumentsAllClosed) {
-            // Regenerate the document on next event. Otherwise the concat document is invalid (it won't track cell additions)
+            // Regenerate the document on next event. We could just mark 'firedOpen' as false,
+            // but the concat document has a bug where if all the cells are destroyed, the concat document
+            // stops tracking.
+            // So the alternative solution is to just regenerate on the next cell add.
             this.activeDocuments.delete(key);
 
             return concatDocument;
