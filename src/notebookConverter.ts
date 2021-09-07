@@ -128,6 +128,9 @@ export class NotebookConverter implements Disposable {
         // mark the cell is closed (which contains `document`)
         // when all cells are closed, we should return the concatDocument, so the language server will close it and clear diagnostics
         if (concatDocument && concatDocument.isComposeDocumentsAllClosed) {
+            // Regenerate the document on next event. Otherwise the concat document is invalid (it won't track cell additions)
+            this.activeDocuments.delete(key);
+
             return concatDocument;
         }
 

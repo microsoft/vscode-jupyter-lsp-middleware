@@ -1,40 +1,40 @@
 {
-  "name": "@vscode/jupyter-lsp-middleware",
-  "version": "0.2.3",
-  "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "compile": "tsc",
-    "copyTestAssets": "node ./scripts/prepareTest.js",
-    "buildTests": "npm run compile && npm run copyTestAssets",
-    "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
-    "download-api": "vscode-dts dev",
-    "postdownload-api": "vscode-dts main",
-    "webpack": "webpack --mode production && node ./scripts/optimizeTypings.js",
-    "webpack-link": "webpack --mode development && node ./scripts/optimizeTypings.js",
-    "webpack-dev": "webpack --mode development --watch"
-  },
-  "author": "Visual Studio Code Team",
-  "license": "MIT",
-  "dependencies": {
-    "uuid": "^3.3.2",
-    "vscode-languageclient": "7.0.0"
-  },
-  "devDependencies": {
-    "@types/fs-extra": "^5.0.1",
-    "@types/glob": "^7.1.1",
-    "@types/mocha": "^8.2.3",
-    "@types/node": "^12.19.12",
-    "@types/uuid": "^3.4.3",
-    "@types/vscode": "~1.53.0",
-    "glob": "^7.1.4",
-    "mocha": "^8.2.1",
-    "ts-loader": "^7.0.5",
-    "typescript": "^4.3.5",
-    "vscode-dts": "^0.3.1",
-    "vscode-test": "^1.3.0",
-    "webpack": "^4.43.0",
-    "webpack-cli": "^3.3.11"
-  }
+    "name": "@vscode/jupyter-lsp-middleware",
+    "version": "0.2.4",
+    "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "compile": "tsc",
+        "copyTestAssets": "node ./scripts/prepareTest.js",
+        "buildTests": "npm run compile && npm run copyTestAssets",
+        "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
+        "download-api": "vscode-dts dev",
+        "postdownload-api": "vscode-dts main",
+        "webpack": "webpack --mode production && node ./scripts/optimizeTypings.js",
+        "webpack-link": "webpack --mode development && node ./scripts/optimizeTypings.js",
+        "webpack-dev": "webpack --mode development --watch"
+    },
+    "author": "Visual Studio Code Team",
+    "license": "MIT",
+    "dependencies": {
+        "uuid": "^3.3.2",
+        "vscode-languageclient": "7.0.0"
+    },
+    "devDependencies": {
+        "@types/fs-extra": "^5.0.1",
+        "@types/glob": "^7.1.1",
+        "@types/mocha": "^8.2.3",
+        "@types/node": "^12.19.12",
+        "@types/uuid": "^3.4.3",
+        "@types/vscode": "~1.53.0",
+        "glob": "^7.1.4",
+        "mocha": "^8.2.1",
+        "ts-loader": "^7.0.5",
+        "typescript": "^4.3.5",
+        "vscode-dts": "^0.3.1",
+        "vscode-test": "^1.3.0",
+        "webpack": "^4.43.0",
+        "webpack-cli": "^3.3.11"
+    }
 }
