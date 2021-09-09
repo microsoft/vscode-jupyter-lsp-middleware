@@ -32,7 +32,7 @@ import {
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
-import { IFileSystem } from './common/types';
+import * as path from 'path';
 import { IConcatTextDocument } from './concatTextDocument';
 import { NotebookConcatDocument } from './notebookConcatDocument';
 
@@ -63,12 +63,7 @@ export class NotebookConverter implements Disposable {
 
     private mapOfConcatDocumentsWithCellUris = new Map<string, string[]>();
 
-    constructor(
-        private api: IVSCodeNotebook,
-        private fs: IFileSystem,
-        private cellSelector: string,
-        private notebookFilter: RegExp
-    ) {
+    constructor(private api: IVSCodeNotebook, private cellSelector: string, private notebookFilter: RegExp) {
         this.disposables.push(api.onDidOpenNotebookDocument(this.onDidOpenNotebook.bind(this)));
         this.disposables.push(api.onDidCloseNotebookDocument(this.onDidCloseNotebook.bind(this)));
 
@@ -694,6 +689,12 @@ export class NotebookConverter implements Disposable {
         }
     }
 
+    private arePathsSame(path1: string, path2: string): boolean {
+        path1 = path.normalize(path1);
+        path2 = path.normalize(path2);
+        return path1 === path2;
+    }
+
     private getWrapperFromOutgoingUri(outgoingUri: Uri): NotebookConcatDocument | undefined {
         return this.activeDocumentsOutgoingMap.get(NotebookConverter.getDocumentKey(outgoingUri));
     }
@@ -703,7 +704,7 @@ export class NotebookConverter implements Disposable {
         const key = NotebookConverter.getDocumentKey(uri);
         let result = this.activeDocuments.get(key);
         if (!result) {
-            const doc = this.api.notebookDocuments.find((n) => this.fs.arePathsSame(uri.fsPath, n.uri.fsPath));
+            const doc = this.api.notebookDocuments.find((n) => this.arePathsSame(uri.fsPath, n.uri.fsPath));
             if (!doc) {
                 throw new Error(`Invalid uri, not a notebook: ${uri.fsPath}`);
             }
