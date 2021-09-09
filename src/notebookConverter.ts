@@ -127,8 +127,7 @@ export class NotebookConverter implements Disposable {
             // but the concat document has a bug where if all the cells are destroyed, the concat document
             // stops tracking.
             // So the alternative solution is to just regenerate on the next cell add.
-            this.activeDocuments.delete(key);
-
+            this.deleteWrapper(concatDocument);
             return concatDocument;
         }
 
@@ -682,11 +681,16 @@ export class NotebookConverter implements Disposable {
         if (this.notebookFilter.test(doc.uri.fsPath)) {
             const key = NotebookConverter.getDocumentKey(doc.uri);
             const wrapper = this.getTextDocumentWrapper(doc.uri);
-            this.activeDocuments.delete(key);
-            this.activeDocumentsOutgoingMap.delete(NotebookConverter.getDocumentKey(wrapper.uri));
             this.pendingCloseDocuments.set(key, wrapper);
-            wrapper.dispose();
+            this.deleteWrapper(wrapper);
         }
+    }
+
+    private deleteWrapper(wrapper: NotebookConcatDocument) {
+        // Cleanup both maps and dispose of the wrapper (disconnects the cell change emitter)
+        this.activeDocumentsOutgoingMap.delete(NotebookConverter.getDocumentKey(wrapper.uri));
+        this.activeDocuments.delete(wrapper.key);
+        wrapper.dispose();
     }
 
     private arePathsSame(path1: string, path2: string): boolean {
@@ -708,9 +712,8 @@ export class NotebookConverter implements Disposable {
             if (!doc) {
                 throw new Error(`Invalid uri, not a notebook: ${uri.fsPath}`);
             }
-            result = new NotebookConcatDocument(doc, this.api, this.cellSelector);
-            this.disposables.push(result);
-            result.onCellsChanged((e) => this.onDidChangeCellsEmitter.fire(e), undefined, this.disposables);
+            result = new NotebookConcatDocument(doc, this.api, this.cellSelector, key);
+            result.onCellsChanged((e) => this.onDidChangeCellsEmitter.fire(e)); // This should be cleaned up when the result is disposed.
             this.activeDocuments.set(key, result);
             this.activeDocumentsOutgoingMap.set(NotebookConverter.getDocumentKey(result.uri), result);
         }
