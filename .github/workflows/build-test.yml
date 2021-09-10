@@ -78,5 +78,9 @@ jobs:
       - name: Download VS code API (needed for build to work)
         run: yes | npm run download-api
 
-      - name: Run tests
-        run: npm run test
+      - name: Run tests using xvfb
+        env:
+          DISPLAY: 10
+        uses: GabrielBB/xvfb-action@v1.4
+        with:
+          run: npm run test
