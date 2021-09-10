@@ -354,11 +354,8 @@ export async function createTemporaryNotebook(
 }
 
 export function canRunNotebookTests() {
-    const canRunTests = isInsiders();
-    if (!canRunTests) {
-        console.log(`Can't run native nb tests appEnv.channel = ${vscode.env.appName}`);
-    }
-    return canRunTests;
+    // Can always run notebook tests. Don't currently have a channel dependency
+    return true;
 }
 
 export async function shutdownAllNotebooks() {
