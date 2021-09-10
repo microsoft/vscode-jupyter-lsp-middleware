@@ -819,9 +819,6 @@ async function startLanguageServer(languageServerFolder: string, pythonPath: str
         },
         outputChannel: vscode.window.createOutputChannel('pylance-test'),
         revealOutputChannelOn: RevealOutputChannelOn.Never,
-        initializationOptions: {
-            experimentationSupport: true
-        },
         middleware: createMiddlewareAddon(
             notebookApi,
             () => languageClient,
