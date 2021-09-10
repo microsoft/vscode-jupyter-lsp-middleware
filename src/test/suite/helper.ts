@@ -601,6 +601,13 @@ export async function waitForOutputs(
     );
 }
 
+export async function focusCell(cell: vscode.NotebookCell) {
+    // Change current selection
+    vscode.window.activeNotebookEditor!.selections = [new vscode.NotebookRange(cell.index, cell.index)];
+    // Send a command that will activate a cell
+    await vscode.commands.executeCommand('notebook.cell.edit');
+}
+
 export async function waitForDiagnostics(
     uri: vscode.Uri,
     timeout: number = defaultNotebookTestTimeout
@@ -707,6 +714,25 @@ export async function waitForTextOutput(
             `Output does not contain provided text '${text}' for Cell ${cell.index + 1}, it is ${getCellOutputs(cell)}`
     );
 }
+
+export async function waitForCellChange(timeout = defaultNotebookTestTimeout) {
+    return new Promise<void>(async (resolve, reject) => {
+        let disposable: vscode.Disposable | undefined;
+        const timer = setTimeout(() => {
+            clearTimeout(timer);
+            disposable?.dispose();
+            reject(new Error(`Cell change didn't happen before timeout.`));
+        }, timeout);
+        pendingTimers.push(timer);
+        const handler = (_e: vscode.NotebookCellsChangeEvent) => {
+            clearTimeout(timer);
+            disposable?.dispose();
+            resolve();
+        };
+        disposable = vscode.notebooks.onDidChangeNotebookCells(handler);
+    });
+}
+
 export async function saveActiveNotebook() {
     await vscode.commands.executeCommand('workbench.action.files.saveAll');
 }
