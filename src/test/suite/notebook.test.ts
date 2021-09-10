@@ -78,7 +78,7 @@ suite('Notebook tests', function () {
         );
     });
     test('Edit a cell and make sure diagnostics change', async () => {
-        const cell = await insertCodeCell('import sys\nprint(sys.executable)\na = 1', { index: 0 });
+        const cell = await insertCodeCell('import sys\nprint(sys.executable)\na = 1');
         // Should be no diagnostics yet
         let diagnostics = languages.getDiagnostics(cell.document.uri);
         assert.isEmpty(diagnostics, 'No diagnostics should be found in the first cell');
@@ -98,8 +98,8 @@ suite('Notebook tests', function () {
         );
     });
     test('Insert cells in the middle', async () => {
-        await insertCodeCell('import sys\nprint(sys.executable)', { index: 0 });
-        await insertCodeCell('import sys\nprint(sys.executable)', { index: 1 });
+        await insertCodeCell('import sys\nprint(sys.executable)');
+        await insertCodeCell('import sys\nprint(sys.executable)');
         const cell3 = await insertCodeCell('import system\nprint(sys.executable)', { index: 1 });
 
         // Wait for an error to show up
@@ -111,7 +111,7 @@ suite('Notebook tests', function () {
         );
     });
     test('Replace contents of cell', async () => {
-        const cell = await insertCodeCell('import sys\nprint(sys.executable)\na = 1', { index: 0 });
+        const cell = await insertCodeCell('import sys\nprint(sys.executable)\na = 1');
         // Should be no diagnostics yet
         let diagnostics = languages.getDiagnostics(cell.document.uri);
         assert.isEmpty(diagnostics, 'No diagnostics should be found in the first cell');
@@ -130,9 +130,9 @@ suite('Notebook tests', function () {
         );
     });
     test('Move cell up and down (and make sure diags move with it)', async () => {
-        await insertCodeCell('import sys\nprint(sys.executable)', { index: 0 });
-        let cell2 = await insertCodeCell('import system\nprint(sys.executable)', { index: 1 });
-        await insertCodeCell('import sys\nprint(sys.executable)', { index: 2 });
+        await insertCodeCell('import sys\nprint(sys.executable)');
+        let cell2 = await insertCodeCell('import system\nprint(sys.executable)');
+        await insertCodeCell('import sys\nprint(sys.executable)');
 
         let diagnostics = await waitForDiagnostics(cell2.document.uri);
         assert.ok(diagnostics, 'Import system should generate a diag error on middle cell');
