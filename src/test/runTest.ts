@@ -63,9 +63,10 @@ async function main() {
             extensionTestsPath,
             launchArgs: [
                 workspacePath,
-                '--enable-proposed-api=ms-vscode.vscode-jupyter-lsp-middleware',
+                '--enable-proposed-api',
                 '--skip-welcome',
-                '--skip-release-notes'
+                '--skip-release-notes',
+                '--disable-workspace-trust'
             ]
         });
     } catch (err) {

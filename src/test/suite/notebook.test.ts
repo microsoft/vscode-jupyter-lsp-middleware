@@ -16,7 +16,7 @@ import {
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Notebook tests', function () {
     const disposables: Disposable[] = [];
-    this.timeout(240_000);
+    this.timeout(120_000);
     suiteSetup(async function () {
         this.timeout(120_000);
         if (!canRunNotebookTests()) {
