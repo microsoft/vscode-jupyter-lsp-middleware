@@ -870,10 +870,6 @@ async function shutdownLanguageServer() {
 }
 
 export async function initializeTestWorkspace() {
-    // Make sure pylance is installed.
-    const pylance = vscode.extensions.getExtension('ms-python.vscode-pylance');
-    assert.isOk(pylance, 'Pylance extension not installed, test suite cannot run');
-
     // Python should be installed too.
     const python = vscode.extensions.getExtension('ms-python.python');
     assert.isOk(python, 'Python extension not installed, test suite cannot run');
@@ -881,6 +877,10 @@ export async function initializeTestWorkspace() {
     const pythonExports = python?.exports;
     const pythonPath = pythonExports?.settings.getExecutionDetails().execCommand[0] || process.env.CI_PYTHON_PATH;
     assert.isOk(pythonPath, 'Cannot start as no python path for this test');
+
+    // Make sure pylance is installed.
+    const pylance = vscode.extensions.getExtension('ms-python.vscode-pylance');
+    assert.isOk(pylance, 'Pylance extension not installed, test suite cannot run');
 
     // If it is, use it to start the language server
     if (pylance) {
