@@ -156,7 +156,14 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
     }
 
     public getText(range?: Range | undefined): string {
-        return range ? this.concatDocument.getText(range) : this.concatDocument.getText();
+        const concatText = range ? this.concatDocument.getText(range) : this.concatDocument.getText();
+
+        // Concat document doesn't put the extra newline at the end of the last cell. This prevents
+        // cell additions after an open from being concated correctly
+        if (concatText.endsWith('\n')) {
+            return concatText;
+        }
+        return `${concatText}\n`;
     }
 
     public getWordRangeAtPosition(position: Position, regexp?: RegExp | undefined): Range | undefined {

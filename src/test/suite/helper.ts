@@ -887,6 +887,6 @@ export async function initializeTestWorkspace() {
 
     // If it is, use it to start the language server
     if (pylance) {
-        startLanguageServer(path.join(pylance.extensionPath, 'dist'), pythonPath);
+        await startLanguageServer(path.join(pylance.extensionPath, 'dist'), pythonPath);
     }
 }
