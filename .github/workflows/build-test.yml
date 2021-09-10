@@ -13,6 +13,7 @@ on:
 
 env:
   NODE_VERSION: 12.14.1
+  PYLANCE_VERSION: 2021.9.2-pre.1 # This is temporary until pre.1 bits ship
 
 jobs:
   filecheck:

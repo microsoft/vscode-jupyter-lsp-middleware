@@ -14,7 +14,9 @@
                 "--enable-proposed-api=vscode-jupyter-lsp-middleware", // Name of test extension
                 "--extensionDevelopmentPath=${workspaceFolder:vscode-jupyter-lsp-middleware}/out/test", // Location where extension.ts goes
                 "--extensionTestsPath=${workspaceFolder:vscode-jupyter-lsp-middleware}/out/test/suite/index", // Location of test files,
-                "--skip-welcome"
+                "--skip-welcome",
+                "--skip-release-notes",
+                "--disable-workspace-trust"
             ],
             "stopOnEntry": true,
             "sourceMaps": true,

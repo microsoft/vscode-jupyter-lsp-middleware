@@ -35,7 +35,10 @@ async function installPythonExtension(vscodeExecutablePath: string) {
 
     // Make sure pylance is there too as we'll use it for intellisense tests
     console.info('Installing Pylance Extension');
-    spawnSync(cliPath, ['--install-extension', 'ms-python.vscode-pylance'], {
+    const pylanceExtension = process.env.PYLANCE_VERSION
+        ? `ms-python.vscode-pylance@${process.env.PYLANCE_VERSION}`
+        : 'ms-python.vscode-pylance';
+    spawnSync(cliPath, ['--install-extension', pylanceExtension], {
         encoding: 'utf-8',
         stdio: 'inherit'
     });
