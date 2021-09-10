@@ -1,42 +1,54 @@
 {
-  "version": "2.0.0",
-  "presentation": {
-    "echo": true,
-    "reveal": "always",
-    "focus": false,
-    "panel": "shared"
-  },
-  "tasks": [
-    {
-      "label": "Webpack Production",
-      "type": "npm",
-      "script": "webpack",
-      "isBackground": true,
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
+    "version": "2.0.0",
+    "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
     },
-    {
-      "label": "Webpack Link",
-      "type": "npm",
-      "script": "webpack-link",
-      "isBackground": true,
-      "group": "build"
-    },
-    {
-      "label": "Webpack Dev",
-      "type": "npm",
-      "script": "webpack-dev",
-      "isBackground": true,
-      "group": "build"
-    },
-    {
-      "label": "BuildTests",
-      "type": "npm",
-      "script": "buildTests",
-      "isBackground": true,
-      "group": "build"
-    }
-  ]
+    "tasks": [
+        {
+            "label": "Webpack Production",
+            "type": "npm",
+            "script": "webpack",
+            "isBackground": true,
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Webpack Link",
+            "type": "npm",
+            "script": "webpack-link",
+            "isBackground": true,
+            "group": "build"
+        },
+        {
+            "label": "Webpack Dev",
+            "type": "npm",
+            "script": "webpack-dev",
+            "isBackground": true,
+            "group": "build"
+        },
+        {
+            "label": "BuildTests",
+            "type": "npm",
+            "script": "buildTests",
+            "problemMatcher": ["$tsc-watch"],
+            "isBackground": true,
+            "group": "build"
+        },
+        {
+            "label": "Compile",
+            "type": "npm",
+            "script": "compilewatch",
+            "isBackground": true,
+            "problemMatcher": ["$tsc-watch"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
 }

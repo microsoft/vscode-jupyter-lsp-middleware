@@ -42,3 +42,45 @@ jobs:
 
       - run: npm run webpack
         name: webpack for production
+  test:
+    timeout-minutes: 30
+    name: Unit and Integration Tess
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        pythonVersion: [3.8]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Use Node ${{env.NODE_VERSION}}
+        uses: actions/setup-node@v2.1.5
+        with:
+          node-version: ${{env.NODE_VERSION}}
+
+      - run: npm install
+        name: npm install
+
+      - name: Use Python ${{matrix.pythonVersion}}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{matrix.pythonVersion}}
+
+      - name: Set CI Path
+        uses: ./.github/actions/set-python
+        id: set-python
+        if: matrix.python != 'conda' && matrix.python != 'noPython'
+        with:
+          PYTHON_VERSION: ${{matrix.pythonVersion}}
+
+      - name: Download VS code API (needed for build to work)
+        run: yes | npm run download-api
+
+      - name: Run tests using xvfb
+        env:
+          DISPLAY: 10
+        uses: GabrielBB/xvfb-action@v1.4
+        with:
+          run: npm run test

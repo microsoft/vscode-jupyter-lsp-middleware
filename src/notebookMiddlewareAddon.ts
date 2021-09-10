@@ -33,6 +33,8 @@ import {
     WorkspaceEdit
 } from 'vscode';
 import {
+    ConfigurationParams,
+    ConfigurationRequest,
     DidChangeTextDocumentNotification,
     HandleDiagnosticsSignature,
     LanguageClient,
@@ -55,12 +57,12 @@ import {
     ProvideWorkspaceSymbolsSignature,
     ResolveCodeLensSignature,
     ResolveCompletionItemSignature,
-    ResolveDocumentLinkSignature
+    ResolveDocumentLinkSignature,
+    ResponseError
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { IVSCodeNotebook } from './common/types';
-import { IFileSystem } from './common/types';
 import { isThenable } from './common/utils';
 import { isNotebookCell } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
@@ -79,13 +81,48 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         notebookApi: IVSCodeNotebook,
         private readonly getClient: () => LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
-        fs: IFileSystem,
         cellSelector: string,
-        notebookFileRegex: RegExp
+        notebookFileRegex: RegExp,
+        private readonly pythonPath?: string
     ) {
-        this.converter = new NotebookConverter(notebookApi, fs, cellSelector, notebookFileRegex);
+        this.converter = new NotebookConverter(notebookApi, cellSelector, notebookFileRegex);
         this.didChangeCellsDisposable = this.converter.onDidChangeCells(this.onDidChangeCells.bind(this));
+
+        // Make sure a bunch of functions are bound to this. VS code can call them without a this context
+        this.handleDiagnostics = this.handleDiagnostics.bind(this);
+        this.didOpen = this.didOpen.bind(this);
+        this.didSave = this.didSave.bind(this);
+        this.didChange = this.didChange.bind(this);
+        this.didClose = this.didClose.bind(this);
+        this.willSave = this.willSave.bind(this);
+        this.willSaveWaitUntil = this.willSaveWaitUntil.bind(this);
     }
+
+    public workspace = {
+        configuration: async (
+            params: ConfigurationParams,
+            token: CancellationToken,
+            next: ConfigurationRequest.HandlerSignature
+        ) => {
+            // Handle workspace/configuration requests. Python handles this itself and
+            // doesn't forward to the middleware addon so this shouldn't be called in that case
+            let settings = next(params, token);
+            if (isThenable(settings)) {
+                settings = await settings;
+            }
+            if (settings instanceof ResponseError) {
+                return settings;
+            }
+
+            for (const [i, item] of params.items.entries()) {
+                if (item.section === 'python') {
+                    settings[i].pythonPath = this.pythonPath;
+                }
+            }
+
+            return settings;
+        }
+    };
 
     public dispose(): void {
         this.didChangeCellsDisposable.dispose();

@@ -4,7 +4,6 @@ import { Disposable } from 'vscode';
 import { LanguageClient, Middleware } from 'vscode-languageclient/node';
 
 import { IVSCodeNotebook } from './common/types';
-import { IFileSystem } from './common/types';
 import { NotebookMiddlewareAddon } from './notebookMiddlewareAddon';
 
 export type MiddlewareAddon = Middleware & Disposable;
@@ -14,9 +13,9 @@ export function createMiddlewareAddon(
     notebookApi: IVSCodeNotebook,
     getClient: () => LanguageClient | undefined,
     traceInfo: (...args: any[]) => void,
-    fs: IFileSystem,
     cellSelector: string,
-    notebookFileRegex: RegExp
+    notebookFileRegex: RegExp,
+    pythonPath?: string
 ): MiddlewareAddon {
-    return new NotebookMiddlewareAddon(notebookApi, getClient, traceInfo, fs, cellSelector, notebookFileRegex);
+    return new NotebookMiddlewareAddon(notebookApi, getClient, traceInfo, cellSelector, notebookFileRegex, pythonPath);
 }
