@@ -28,12 +28,10 @@ suite('Notebook tests', function () {
     setup(async function () {
         traceInfo(`Start Test ${this.currentTest?.title}`);
         await createEmptyPythonNotebook(disposables);
-        process.env.VSC_JUPYTER_IntellisenseTimeout = '30000';
         traceInfo(`Start Test (completed) ${this.currentTest?.title}`);
     });
     teardown(async function () {
         traceInfo(`Ended Test ${this.currentTest?.title}`);
-        delete process.env.VSC_JUPYTER_IntellisenseTimeout;
         await closeNotebooksAndCleanUpAfterTests(disposables);
         traceInfo(`Ended Test (completed) ${this.currentTest?.title}`);
     });
