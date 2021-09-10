@@ -75,5 +75,8 @@ jobs:
         with:
           PYTHON_VERSION: ${{matrix.pythonVersion}}
 
+      - name: Download VS code API (needed for build to work)
+        run: y | npm run download-api
+
       - name: Run tests
         run: npm run test

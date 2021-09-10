@@ -9,7 +9,7 @@
         "copyTestAssets": "node ./scripts/prepareTest.js",
         "compilewatch": "tsc -watch -p ./",
         "buildTests": "npm run download-api && npm run copyTestAssets && npm run compilewatch",
-        "test": "npm run download-api && npm run copyTestAssets && npm run compile &&  node ./out/test/runTest.js",
+        "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
         "download-api": "vscode-dts dev",
         "postdownload-api": "vscode-dts main",
         "webpack": "webpack --mode production && node ./scripts/optimizeTypings.js",
