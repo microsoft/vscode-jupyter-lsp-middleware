@@ -13,6 +13,8 @@ on:
 
 env:
   NODE_VERSION: 12.14.1
+  IS_CI: 1
+  SCREENSHOT_PATH: '*-screenshot.png'
 
 jobs:
   filecheck:
@@ -82,5 +84,12 @@ jobs:
         env:
           DISPLAY: 10
         uses: GabrielBB/xvfb-action@v1.4
+        id: test_id
         with:
           run: npm run test
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v2
+        if: steps.test_id.outcome == 'failure' && failure()
+        with:
+          path: './${{env.SCREENSHOT_PATH}}'

@@ -25,7 +25,8 @@ import {
     waitForDiagnostics,
     waitForCellChange,
     deleteCell,
-    insertMarkdownCell
+    insertMarkdownCell,
+    captureScreenShot
 } from './helper';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
@@ -47,6 +48,9 @@ suite('Notebook tests', function () {
     });
     teardown(async function () {
         traceInfo(`Ended Test ${this.currentTest?.title}`);
+        if (this.currentTest && this.currentTest.state === 'failed') {
+            await captureScreenShot(this.currentTest.title);
+        }
         await closeNotebooksAndCleanUpAfterTests(disposables);
         traceInfo(`Ended Test (completed) ${this.currentTest?.title}`);
     });

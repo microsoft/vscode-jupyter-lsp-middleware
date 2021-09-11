@@ -745,6 +745,25 @@ export function traceInfo(...args: any[]) {
     console.log(args);
 }
 
+/**
+ * Captures screenshots (png format) & dumpts into root directory (on CI).
+ * If there's a failure, it will be logged (errors are swallowed).
+ */
+export async function captureScreenShot(fileNamePrefix: string) {
+    if (!process.env.IS_CI) {
+        return;
+    }
+    const name = `${fileNamePrefix}_${uuid()}`.replace(/[\W]+/g, '_');
+    const filename = path.join(EXTENSION_ROOT_DIR_FOR_TESTS, `${name}-screenshot.png`);
+    try {
+        const screenshot = require('screenshot-desktop');
+        await screenshot({ filename });
+        console.info(`Screenshot captured into ${filename}`);
+    } catch (ex) {
+        console.error(`Failed to capture screenshot into ${filename}`, ex);
+    }
+}
+
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
 export const InteractiveScheme = 'vscode-interactive';
