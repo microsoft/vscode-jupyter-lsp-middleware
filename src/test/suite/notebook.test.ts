@@ -27,7 +27,8 @@ import {
     deleteCell,
     insertMarkdownCell,
     captureScreenShot,
-    captureOutputMessages
+    captureOutputMessages,
+    shutdownLanguageServer
 } from './helper';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
@@ -56,7 +57,10 @@ suite('Notebook tests', function () {
         await closeNotebooksAndCleanUpAfterTests(disposables);
         traceInfo(`Ended Test (completed) ${this.currentTest?.title}`);
     });
-    suiteTeardown(() => closeNotebooksAndCleanUpAfterTests(disposables));
+    suiteTeardown(async () => {
+        closeNotebooksAndCleanUpAfterTests(disposables);
+        await shutdownLanguageServer();
+    });
     test('Add some cells and get completions', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)\na = 1', { index: 0 });
         await insertCodeCell('a.', { index: 1 });
@@ -102,7 +106,6 @@ suite('Notebook tests', function () {
             diagnostics.find((item) => item.message.includes('system')),
             'System message not found'
         );
-        assert.fail('Default fail');
     });
     test('Insert cells in the middle', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)');

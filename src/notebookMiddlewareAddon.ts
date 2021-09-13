@@ -133,6 +133,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public dispose(): void {
         this.traceDisposable?.dispose();
+        this.traceDisposable = undefined;
         this.didChangeCellsDisposable.dispose();
         this.converter.dispose();
     }

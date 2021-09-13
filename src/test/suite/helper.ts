@@ -466,7 +466,6 @@ export async function closeNotebooksAndCleanUpAfterTests(disposables: IDisposabl
     await closeActiveWindows();
     disposeAllDisposables(disposables);
     await shutdownAllNotebooks();
-    await shutdownLanguageServer();
 }
 
 const pendingTimers: any[] = [];
@@ -923,7 +922,7 @@ async function startLanguageServer(languageServerFolder: string, pythonPath: str
     }
 }
 
-async function shutdownLanguageServer() {
+export async function shutdownLanguageServer() {
     if (languageClientDisposable) {
         languageClientDisposable.dispose();
         languageClientDisposable = undefined;
