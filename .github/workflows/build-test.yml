@@ -14,7 +14,7 @@ on:
 env:
   NODE_VERSION: 12.14.1
   IS_CI: 1
-  SCREENSHOT_PATH: '*-screenshot.png'
+  SCREENSHOT_PATH: 'src/test/*-screenshot.png'
 
 jobs:
   filecheck:
