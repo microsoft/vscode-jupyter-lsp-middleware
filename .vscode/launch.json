@@ -25,6 +25,10 @@
                 "${workspaceFolder}/dist/**/*.js",
                 "!${workspaceFolder}/**/node_modules**/*"
             ],
+            "env": {
+                // Set this to specify grep for test matching
+                "CI_TEST_GREP": ""
+            },
             "preLaunchTask": "BuildTests",
             "skipFiles": ["<node_internals>/**"],
             "presentation": {

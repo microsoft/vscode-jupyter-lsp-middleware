@@ -15,6 +15,7 @@ import {
     Disposable,
     DocumentHighlight,
     DocumentLink,
+    DocumentSelector,
     DocumentSymbol,
     FormattingOptions,
     Location,
@@ -82,7 +83,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         notebookApi: IVSCodeNotebook,
         private readonly getClient: () => LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
-        cellSelector: string,
+        cellSelector: string | DocumentSelector,
         notebookFileRegex: RegExp,
         private readonly pythonPath?: string,
         private readonly trace?: (message: string) => void

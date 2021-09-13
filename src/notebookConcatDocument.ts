@@ -14,7 +14,8 @@ import {
     TextDocumentChangeEvent,
     TextLine,
     Uri,
-    NotebookCell
+    NotebookCell,
+    DocumentSelector
 } from 'vscode';
 import { NotebookDocument } from 'vscode';
 import { integer } from 'vscode-languageserver-types';
@@ -93,12 +94,12 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
     private onCellsChangedEmitter = new EventEmitter<TextDocumentChangeEvent>();
 
     private _notebook: NotebookDocument;
-    private _selector: string;
+    private _selector: DocumentSelector;
 
     constructor(
         notebook: NotebookDocument,
         notebookApi: IVSCodeNotebook,
-        selector: string,
+        selector: DocumentSelector,
         public readonly key: string
     ) {
         const dir = path.dirname(notebook.uri.fsPath);

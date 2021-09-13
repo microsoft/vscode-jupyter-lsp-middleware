@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { Position, Range, Uri, Event, Location, TextLine, TextDocument } from 'vscode';
+import { Position, Range, Uri, Event, Location, TextLine, TextDocument, DocumentSelector } from 'vscode';
 
 export interface IConcatTextDocument {
     onDidChange: Event<void>;
@@ -21,7 +21,7 @@ export interface IConcatTextDocument {
     getComposeDocuments(): TextDocument[];
 }
 
-export function score(document: TextDocument, selector: string): number {
+export function score(document: TextDocument, selector: DocumentSelector): number {
     if (selector === '*') {
         return 5;
     }

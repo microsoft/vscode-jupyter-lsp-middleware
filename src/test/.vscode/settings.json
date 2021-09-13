@@ -1,3 +1,4 @@
 {
-    "lsp-middleware-test.trace.server": "verbose"
+    "lsp-middleware-test.trace.server": "verbose",
+    "python.languageServer": "None"
 }
