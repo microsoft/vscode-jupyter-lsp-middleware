@@ -14,7 +14,7 @@ export function createMiddlewareAddon(
     notebookApi: IVSCodeNotebook,
     getClient: () => LanguageClient | undefined,
     traceInfo: (...args: any[]) => void,
-    cellSelector: string | DocumentSelector,
+    cellSelector: DocumentSelector,
     notebookFileRegex: RegExp,
     pythonPath?: string,
     trace?: (message: string) => void
@@ -24,7 +24,10 @@ export function createMiddlewareAddon(
     // all events for python selector
     // - Notebook based addon taht jupyter extension creates. It processes
     // events for a jupyter (python) notebook
-    if (cellSelector === 'python') {
+    if (
+        (typeof cellSelector === 'string' && cellSelector === 'python') ||
+        (Array.isArray(cellSelector) && cellSelector.find((s) => s === 'python' || s.language === 'python'))
+    ) {
         return new ConsumingMiddlewareAddon();
     } else {
         return new NotebookMiddlewareAddon(

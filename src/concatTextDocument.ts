@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { Position, Range, Uri, Event, Location, TextLine, TextDocument, DocumentSelector } from 'vscode';
+import { Position, Range, Uri, Event, Location, TextLine, TextDocument, DocumentSelector, languages } from 'vscode';
 
 export interface IConcatTextDocument {
     onDidChange: Event<void>;
@@ -22,16 +22,5 @@ export interface IConcatTextDocument {
 }
 
 export function score(document: TextDocument, selector: DocumentSelector): number {
-    if (selector === '*') {
-        return 5;
-    }
-    if (selector === document.languageId) {
-        return 10;
-    }
-    if (Array.isArray(selector)) {
-        if (selector.find((s) => s === document.languageId || s.language === document.languageId)) {
-            return 10;
-        }
-    }
-    return 0;
+    return languages.match(selector, document);
 }
