@@ -66,7 +66,6 @@ import { IVSCodeNotebook } from './common/types';
 import { isThenable } from './common/utils';
 import { isNotebookCell } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
-import { threadId } from 'worker_threads';
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
  *

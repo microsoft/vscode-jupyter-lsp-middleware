@@ -27,8 +27,7 @@ import {
     deleteCell,
     insertMarkdownCell,
     captureScreenShot,
-    captureOutputMessages,
-    clearOutputMessages
+    captureOutputMessages
 } from './helper';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
