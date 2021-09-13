@@ -20,24 +20,25 @@ import {
     insertCodeCell,
     createEmptyPythonNotebook,
     traceInfo,
-    initializeTestWorkspace,
+    createLanguageServer,
     focusCell,
     captureScreenShot,
     captureOutputMessages,
-    shutdownLanguageServer,
-    sleep
+    sleep,
+    LanguageServer
 } from './helper';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Consuming tests', function () {
     const disposables: Disposable[] = [];
+    let languageServer: LanguageServer | undefined;
     this.timeout(120_000);
     suiteSetup(async function () {
         this.timeout(120_000);
         if (!canRunNotebookTests()) {
             return this.skip();
         }
-        await initializeTestWorkspace('consuming-test', 'python');
+        languageServer = await createLanguageServer('consuming-test', ['python']);
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).
     setup(async function () {
@@ -56,7 +57,7 @@ suite('Consuming tests', function () {
     });
     suiteTeardown(async () => {
         closeNotebooksAndCleanUpAfterTests(disposables);
-        await shutdownLanguageServer();
+        await languageServer?.dispose();
     });
     test('Add some cells and get empty completions', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)\na = 1', { index: 0 });

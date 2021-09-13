@@ -3,6 +3,7 @@
 
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 import { assert } from 'chai';
+import * as path from 'path';
 import {
     window,
     commands,
@@ -14,13 +15,14 @@ import {
     WorkspaceEdit,
     workspace
 } from 'vscode';
+import { DocumentFilter } from 'vscode-languageserver-protocol';
 import {
     canRunNotebookTests,
     closeNotebooksAndCleanUpAfterTests,
     insertCodeCell,
     createEmptyPythonNotebook,
     traceInfo,
-    initializeTestWorkspace,
+    createLanguageServer,
     focusCell,
     waitForDiagnostics,
     waitForCellChange,
@@ -28,13 +30,13 @@ import {
     insertMarkdownCell,
     captureScreenShot,
     captureOutputMessages,
-    shutdownLanguageServer
+    LanguageServer
 } from './helper';
 
 export const PYTHON_LANGUAGE = 'python';
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
-export const NOTEBOOK_SELECTOR = [
+export const NOTEBOOK_SELECTOR: DocumentFilter[] = [
     { scheme: 'untitled', language: PYTHON_LANGUAGE },
     { scheme: 'vscode-notebook', language: PYTHON_LANGUAGE },
     { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
@@ -44,18 +46,29 @@ export const NOTEBOOK_SELECTOR = [
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Notebook tests', function () {
     const disposables: Disposable[] = [];
+    const languageServers: LanguageServer[] = [];
     this.timeout(120_000);
     suiteSetup(async function () {
         this.timeout(120_000);
         if (!canRunNotebookTests()) {
             return this.skip();
         }
-        await initializeTestWorkspace('notebook-test', NOTEBOOK_SELECTOR);
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).
     setup(async function () {
         traceInfo(`Start Test ${this.currentTest?.title}`);
-        await createEmptyPythonNotebook(disposables);
+        const uri = await createEmptyPythonNotebook(disposables);
+
+        // Use this file to create our language server
+        const baseName = path.basename(uri.fsPath);
+        const filter: DocumentFilter = {
+            pattern: uri.fsPath
+        };
+        const languageServer = await createLanguageServer(baseName, [filter]);
+        if (languageServer) {
+            languageServers.push(languageServer);
+        }
+
         traceInfo(`Start Test (completed) ${this.currentTest?.title}`);
     });
     teardown(async function () {
@@ -69,7 +82,7 @@ suite('Notebook tests', function () {
     });
     suiteTeardown(async () => {
         closeNotebooksAndCleanUpAfterTests(disposables);
-        await shutdownLanguageServer();
+        await Promise.all(languageServers.map((l) => l.dispose()));
     });
     test('Add some cells and get completions', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)\na = 1', { index: 0 });

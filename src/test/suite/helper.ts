@@ -12,9 +12,11 @@ import { IDisposable, IVSCodeNotebook } from '../../common/types';
 import * as vslc from 'vscode-languageclient/node';
 import {
     ClientCapabilities,
+    DocumentSelector,
     DynamicFeature,
     ExecuteCommandRegistrationOptions,
     ExecuteCommandRequest,
+    LanguageClient,
     RegistrationData,
     RegistrationType,
     RevealOutputChannelOn,
@@ -543,9 +545,11 @@ export async function createEmptyPythonNotebook(disposables: IDisposable[] = [])
     // Coz we won't save to file, hence extension will backup in dirty file and when u re-open it will open from dirty.
     const nbFile = await createTemporaryNotebook(templatePythonNbFile, disposables);
     // Open a python notebook and use this for all tests in this test suite.
+    const uri = vscode.Uri.file(nbFile);
     await vscode.window.showNotebookDocument(vscode.Uri.file(nbFile));
     assert.isOk(vscode.window.activeNotebookEditor, 'No active notebook');
     await deleteAllCellsAndWait();
+    return uri;
 }
 
 let workedAroundVSCodeNotebookStartPage = false;
@@ -854,12 +858,21 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
     }
 }
 
+export class LanguageServer implements vscode.Disposable {
+    constructor(public client: LanguageClient, private disposables: vscode.Disposable[]) {}
+
+    public async dispose() {
+        this.disposables.forEach((d) => d.dispose());
+        await this.client.stop();
+    }
+}
+
 async function startLanguageServer(
     outputChannel: string,
     languageServerFolder: string,
     pythonPath: string,
-    selector: vscode.DocumentSelector
-) {
+    selector: DocumentSelector
+): Promise<LanguageServer> {
     const bundlePath = path.join(languageServerFolder, 'server.bundle.js');
     const nonBundlePath = path.join(languageServerFolder, 'server.js');
     const modulePath = (await fs.pathExists(nonBundlePath)) ? nonBundlePath : bundlePath;
@@ -886,7 +899,7 @@ async function startLanguageServer(
 
     // Client options need to include our middleware piece
     const clientOptions: vslc.LanguageClientOptions = {
-        documentSelector: PYTHON,
+        documentSelector: selector,
         workspaceFolder: undefined,
         synchronize: {
             configurationSection: PYTHON_LANGUAGE
@@ -925,23 +938,14 @@ async function startLanguageServer(
     if (languageClient) {
         await languageClient.onReady();
     }
+
+    return new LanguageServer(languageClient, [languageClientDisposable, cancellationStrategy]);
 }
 
-export async function shutdownLanguageServer() {
-    if (languageClientDisposable) {
-        languageClientDisposable.dispose();
-        languageClientDisposable = undefined;
-    }
-    if (cancellationStrategy) {
-        cancellationStrategy.dispose();
-    }
-    if (languageClient) {
-        await languageClient.stop();
-        languageClient = undefined;
-    }
-}
-
-export async function initializeTestWorkspace(outputChannel: string, selector: vscode.DocumentSelector) {
+export async function createLanguageServer(
+    outputChannel: string,
+    selector: DocumentSelector
+): Promise<LanguageServer | undefined> {
     // Python should be installed too.
     const python = vscode.extensions.getExtension('ms-python.python');
     assert.isOk(python, 'Python extension not installed, test suite cannot run');
@@ -956,6 +960,6 @@ export async function initializeTestWorkspace(outputChannel: string, selector: v
 
     // If it is, use it to start the language server
     if (pylance) {
-        await startLanguageServer(outputChannel, path.join(pylance.extensionPath, 'dist'), pythonPath, selector);
+        return startLanguageServer(outputChannel, path.join(pylance.extensionPath, 'dist'), pythonPath, selector);
     }
 }
