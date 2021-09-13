@@ -28,7 +28,8 @@ import {
     TextEdit,
     Uri,
     WorkspaceEdit,
-    NotebookDocument
+    NotebookDocument,
+    DocumentSelector
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
@@ -63,7 +64,7 @@ export class NotebookConverter implements Disposable {
 
     private mapOfConcatDocumentsWithCellUris = new Map<string, string[]>();
 
-    constructor(private api: IVSCodeNotebook, private cellSelector: string, private notebookFilter: RegExp) {
+    constructor(private api: IVSCodeNotebook, private cellSelector: DocumentSelector, private notebookFilter: RegExp) {
         this.disposables.push(api.onDidOpenNotebookDocument(this.onDidOpenNotebook.bind(this)));
         this.disposables.push(api.onDidCloseNotebookDocument(this.onDidCloseNotebook.bind(this)));
 

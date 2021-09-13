@@ -31,6 +31,16 @@ import {
     shutdownLanguageServer
 } from './helper';
 
+export const PYTHON_LANGUAGE = 'python';
+export const NotebookCellScheme = 'vscode-notebook-cell';
+export const InteractiveInputScheme = 'vscode-interactive-input';
+export const NOTEBOOK_SELECTOR = [
+    { scheme: 'untitled', language: PYTHON_LANGUAGE },
+    { scheme: 'vscode-notebook', language: PYTHON_LANGUAGE },
+    { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
+    { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
+];
+
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Notebook tests', function () {
     const disposables: Disposable[] = [];
@@ -40,7 +50,7 @@ suite('Notebook tests', function () {
         if (!canRunNotebookTests()) {
             return this.skip();
         }
-        await initializeTestWorkspace();
+        await initializeTestWorkspace('notebook-test', NOTEBOOK_SELECTOR);
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).
     setup(async function () {

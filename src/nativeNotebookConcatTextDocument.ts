@@ -12,7 +12,8 @@ import {
     TextLine,
     NotebookCell,
     TextDocument,
-    NotebookConcatTextDocument
+    NotebookConcatTextDocument,
+    DocumentSelector
 } from 'vscode';
 
 import { IVSCodeNotebook } from './common/types';
@@ -30,7 +31,11 @@ export class EnhancedNotebookConcatTextDocument implements IConcatTextDocument {
         return !this._notebook.getCells().some((cell) => !cell.document.isClosed);
     }
 
-    constructor(private _notebook: NotebookDocument, private _selector: string, notebookApi: IVSCodeNotebook) {
+    constructor(
+        private _notebook: NotebookDocument,
+        private _selector: DocumentSelector,
+        notebookApi: IVSCodeNotebook
+    ) {
         this._concatTextDocument = notebookApi.createConcatTextDocument(_notebook, _selector);
 
         this._concatTextDocument.onDidChange(() => {
@@ -64,7 +69,7 @@ export class EnhancedNotebookConcatTextDocument implements IConcatTextDocument {
         return (
             this.getCellsInConcatDocument().find(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (item) => ((item as any).cellKind || item.kind) === NotebookCellKind.Code,
+                (item) => ((item as any).cellKind || item.kind) === NotebookCellKind.Code
             )?.document?.languageId || PYTHON_LANGUAGE
         );
     }

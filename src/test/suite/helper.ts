@@ -854,7 +854,12 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
     }
 }
 
-async function startLanguageServer(languageServerFolder: string, pythonPath: string) {
+async function startLanguageServer(
+    outputChannel: string,
+    languageServerFolder: string,
+    pythonPath: string,
+    selector: vscode.DocumentSelector
+) {
     const bundlePath = path.join(languageServerFolder, 'server.bundle.js');
     const nonBundlePath = path.join(languageServerFolder, 'server.js');
     const modulePath = (await fs.pathExists(nonBundlePath)) ? nonBundlePath : bundlePath;
@@ -886,13 +891,13 @@ async function startLanguageServer(languageServerFolder: string, pythonPath: str
         synchronize: {
             configurationSection: PYTHON_LANGUAGE
         },
-        outputChannel: vscode.window.createOutputChannel('pylance-test'),
+        outputChannel: vscode.window.createOutputChannel(outputChannel),
         revealOutputChannelOn: RevealOutputChannelOn.Never,
         middleware: createMiddlewareAddon(
             notebookApi,
             () => languageClient,
             traceInfo,
-            'python',
+            selector,
             /.*\.(ipynb|interactive)/m,
             pythonPath,
             (message) => outputMessages.push(message)
@@ -936,7 +941,7 @@ export async function shutdownLanguageServer() {
     }
 }
 
-export async function initializeTestWorkspace() {
+export async function initializeTestWorkspace(outputChannel: string, selector: vscode.DocumentSelector) {
     // Python should be installed too.
     const python = vscode.extensions.getExtension('ms-python.python');
     assert.isOk(python, 'Python extension not installed, test suite cannot run');
@@ -951,6 +956,6 @@ export async function initializeTestWorkspace() {
 
     // If it is, use it to start the language server
     if (pylance) {
-        await startLanguageServer(path.join(pylance.extensionPath, 'dist'), pythonPath);
+        await startLanguageServer(outputChannel, path.join(pylance.extensionPath, 'dist'), pythonPath, selector);
     }
 }
