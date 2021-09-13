@@ -26,7 +26,9 @@ import {
     waitForCellChange,
     deleteCell,
     insertMarkdownCell,
-    captureScreenShot
+    captureScreenShot,
+    captureOutputMessages,
+    clearOutputMessages
 } from './helper';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
@@ -50,6 +52,7 @@ suite('Notebook tests', function () {
         traceInfo(`Ended Test ${this.currentTest?.title}`);
         if (this.currentTest && this.currentTest.state === 'failed') {
             await captureScreenShot(this.currentTest.title);
+            await captureOutputMessages();
         }
         await closeNotebooksAndCleanUpAfterTests(disposables);
         traceInfo(`Ended Test (completed) ${this.currentTest?.title}`);
@@ -100,6 +103,7 @@ suite('Notebook tests', function () {
             diagnostics.find((item) => item.message.includes('system')),
             'System message not found'
         );
+        assert.fail('Default fail');
     });
     test('Insert cells in the middle', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)');

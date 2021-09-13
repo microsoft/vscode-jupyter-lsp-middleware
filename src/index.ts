@@ -15,7 +15,16 @@ export function createMiddlewareAddon(
     traceInfo: (...args: any[]) => void,
     cellSelector: string,
     notebookFileRegex: RegExp,
-    pythonPath?: string
+    pythonPath?: string,
+    trace?: (message: string) => void
 ): MiddlewareAddon {
-    return new NotebookMiddlewareAddon(notebookApi, getClient, traceInfo, cellSelector, notebookFileRegex, pythonPath);
+    return new NotebookMiddlewareAddon(
+        notebookApi,
+        getClient,
+        traceInfo,
+        cellSelector,
+        notebookFileRegex,
+        pythonPath,
+        trace
+    );
 }

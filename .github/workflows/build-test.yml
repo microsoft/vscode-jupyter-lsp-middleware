@@ -15,6 +15,7 @@ env:
   NODE_VERSION: 12.14.1
   IS_CI: 1
   SCREENSHOT_PATH: 'src/test/*-screenshot.png'
+  PYLANCE_LOG_PATH: 'src/test/pylance-log.txt'
 
 jobs:
   filecheck:
@@ -93,3 +94,9 @@ jobs:
         if: steps.test_id.outcome == 'failure' && failure()
         with:
           path: './${{env.SCREENSHOT_PATH}}'
+
+      - name: Upload pylance log
+        uses: actions/upload-artifact@v2
+        if: steps.test_id.outcome == 'failure' && failure()
+        with:
+          path: './${{env.P}}'

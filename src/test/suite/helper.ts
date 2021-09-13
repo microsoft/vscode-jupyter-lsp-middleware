@@ -462,6 +462,7 @@ export async function closeActiveNotebooks(): Promise<void> {
 }
 
 export async function closeNotebooksAndCleanUpAfterTests(disposables: IDisposable[] = []) {
+    clearOutputMessages();
     await closeActiveWindows();
     disposeAllDisposables(disposables);
     await shutdownAllNotebooks();
@@ -746,7 +747,7 @@ export function traceInfo(...args: any[]) {
 }
 
 /**
- * Captures screenshots (png format) & dumpts into root directory (on CI).
+ * Captures screenshots (png format) & dumps into root directory (on CI).
  * If there's a failure, it will be logged (errors are swallowed).
  */
 export async function captureScreenShot(fileNamePrefix: string) {
@@ -761,6 +762,30 @@ export async function captureScreenShot(fileNamePrefix: string) {
         console.info(`Screenshot captured into ${filename}`);
     } catch (ex) {
         console.error(`Failed to capture screenshot into ${filename}`, ex);
+    }
+}
+
+let outputMessages: string[] = [];
+
+/**
+ * Clears all of the output messages
+ */
+function clearOutputMessages() {
+    outputMessages = [];
+}
+
+/**
+ * Saves all of the output channel data to a file on CI
+ */
+export async function captureOutputMessages() {
+    if (!process.env.IS_CI) {
+        return;
+    }
+    const filename = path.join(EXTENSION_ROOT_DIR_FOR_TESTS, `pylance-log.text`);
+    try {
+        await fs.writeFile(filename, outputMessages.join('\n'));
+    } catch (ex) {
+        console.error(`Failed to capture output messages into ${filename}`, ex);
     }
 }
 
@@ -870,7 +895,8 @@ async function startLanguageServer(languageServerFolder: string, pythonPath: str
             traceInfo,
             'python',
             /.*\.(ipynb|interactive)/m,
-            pythonPath
+            pythonPath,
+            (message) => outputMessages.push(message)
         ),
         connectionOptions: {
             cancellationStrategy
