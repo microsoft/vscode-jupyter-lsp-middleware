@@ -28,5 +28,10 @@ export function score(document: TextDocument, selector: DocumentSelector): numbe
     if (selector === document.languageId) {
         return 10;
     }
+    if (Array.isArray(selector)) {
+        if (selector.find((s) => s === document.languageId || s.language === document.languageId)) {
+            return 10;
+        }
+    }
     return 0;
 }
