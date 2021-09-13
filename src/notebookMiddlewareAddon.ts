@@ -76,6 +76,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private converter: NotebookConverter;
 
     private didChangeCellsDisposable: Disposable;
+    private traceDisposable: Disposable | undefined;
 
     constructor(
         notebookApi: IVSCodeNotebook,
@@ -83,7 +84,8 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         private readonly traceInfo: (...args: any[]) => void,
         cellSelector: string,
         notebookFileRegex: RegExp,
-        private readonly pythonPath?: string
+        private readonly pythonPath?: string,
+        private readonly trace?: (message: string) => void
     ) {
         this.converter = new NotebookConverter(notebookApi, cellSelector, notebookFileRegex);
         this.didChangeCellsDisposable = this.converter.onDidChangeCells(this.onDidChangeCells.bind(this));
@@ -96,6 +98,11 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.didClose = this.didClose.bind(this);
         this.willSave = this.willSave.bind(this);
         this.willSaveWaitUntil = this.willSaveWaitUntil.bind(this);
+
+        // Turn off tracing if no trace method
+        if (!trace) {
+            this.traceDisposable = { dispose: () => {} };
+        }
     }
 
     public workspace = {
@@ -125,6 +132,8 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     };
 
     public dispose(): void {
+        this.traceDisposable?.dispose();
+        this.traceDisposable = undefined;
         this.didChangeCellsDisposable.dispose();
         this.converter.dispose();
     }
@@ -147,6 +156,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     public didOpen(document: TextDocument, next: (ev: TextDocument) => void): () => void {
+        // Initialize tracing on the first document open
+        this.initializeTracing();
+
         // If this is a notebook cell, change this into a concat document if this is the first time.
         if (isNotebookCell(document.uri)) {
             if (!this.converter.hasFiredOpen(document)) {
@@ -531,6 +543,15 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         if (client) {
             const params = client.code2ProtocolConverter.asChangeTextDocumentParams(e);
             client.sendNotification(DidChangeTextDocumentNotification.type, params);
+        }
+    }
+
+    private initializeTracing() {
+        if (!this.traceDisposable && this.trace) {
+            const client = this.getClient();
+            if (client) {
+                this.traceDisposable = client.onNotification('window/logMessage', this.trace);
+            }
         }
     }
 }

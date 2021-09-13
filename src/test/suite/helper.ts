@@ -462,10 +462,10 @@ export async function closeActiveNotebooks(): Promise<void> {
 }
 
 export async function closeNotebooksAndCleanUpAfterTests(disposables: IDisposable[] = []) {
+    clearOutputMessages();
     await closeActiveWindows();
     disposeAllDisposables(disposables);
     await shutdownAllNotebooks();
-    await shutdownLanguageServer();
 }
 
 const pendingTimers: any[] = [];
@@ -601,6 +601,13 @@ export async function waitForOutputs(
     );
 }
 
+export async function focusCell(cell: vscode.NotebookCell) {
+    // Change current selection
+    vscode.window.activeNotebookEditor!.selections = [new vscode.NotebookRange(cell.index, cell.index)];
+    // Send a command that will activate a cell
+    await vscode.commands.executeCommand('notebook.cell.edit');
+}
+
 export async function waitForDiagnostics(
     uri: vscode.Uri,
     timeout: number = defaultNotebookTestTimeout
@@ -707,6 +714,25 @@ export async function waitForTextOutput(
             `Output does not contain provided text '${text}' for Cell ${cell.index + 1}, it is ${getCellOutputs(cell)}`
     );
 }
+
+export async function waitForCellChange(timeout = defaultNotebookTestTimeout) {
+    return new Promise<void>(async (resolve, reject) => {
+        let disposable: vscode.Disposable | undefined;
+        const timer = setTimeout(() => {
+            clearTimeout(timer);
+            disposable?.dispose();
+            reject(new Error(`Cell change didn't happen before timeout.`));
+        }, timeout);
+        pendingTimers.push(timer);
+        const handler = (_e: vscode.NotebookCellsChangeEvent) => {
+            clearTimeout(timer);
+            disposable?.dispose();
+            resolve();
+        };
+        disposable = vscode.notebooks.onDidChangeNotebookCells(handler);
+    });
+}
+
 export async function saveActiveNotebook() {
     await vscode.commands.executeCommand('workbench.action.files.saveAll');
 }
@@ -717,6 +743,49 @@ export function noop() {
 
 export function traceInfo(...args: any[]) {
     console.log(args);
+}
+
+/**
+ * Captures screenshots (png format) & dumps into root directory (on CI).
+ * If there's a failure, it will be logged (errors are swallowed).
+ */
+export async function captureScreenShot(fileNamePrefix: string) {
+    if (!process.env.IS_CI) {
+        return;
+    }
+    const name = `${fileNamePrefix}_${uuid()}`.replace(/[\W]+/g, '_');
+    const filename = path.join(EXTENSION_ROOT_DIR_FOR_TESTS, `${name}-screenshot.png`);
+    try {
+        const screenshot = require('screenshot-desktop');
+        await screenshot({ filename });
+        console.info(`Screenshot captured into ${filename}`);
+    } catch (ex) {
+        console.error(`Failed to capture screenshot into ${filename}`, ex);
+    }
+}
+
+let outputMessages: string[] = [];
+
+/**
+ * Clears all of the output messages
+ */
+function clearOutputMessages() {
+    outputMessages = [];
+}
+
+/**
+ * Saves all of the output channel data to a file on CI
+ */
+export async function captureOutputMessages() {
+    if (!process.env.IS_CI) {
+        return;
+    }
+    const filename = path.join(EXTENSION_ROOT_DIR_FOR_TESTS, `pylance-log.text`);
+    try {
+        await fs.writeFile(filename, outputMessages.join('\n'));
+    } catch (ex) {
+        console.error(`Failed to capture output messages into ${filename}`, ex);
+    }
 }
 
 export const NotebookCellScheme = 'vscode-notebook-cell';
@@ -825,7 +894,8 @@ async function startLanguageServer(languageServerFolder: string, pythonPath: str
             traceInfo,
             'python',
             /.*\.(ipynb|interactive)/m,
-            pythonPath
+            pythonPath,
+            (message) => outputMessages.push(message)
         ),
         connectionOptions: {
             cancellationStrategy
@@ -852,7 +922,7 @@ async function startLanguageServer(languageServerFolder: string, pythonPath: str
     }
 }
 
-async function shutdownLanguageServer() {
+export async function shutdownLanguageServer() {
     if (languageClientDisposable) {
         languageClientDisposable.dispose();
         languageClientDisposable = undefined;

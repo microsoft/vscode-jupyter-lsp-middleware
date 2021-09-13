@@ -7,9 +7,9 @@ const workspacePath = process.env.CODE_TESTS_WORKSPACE
     ? process.env.CODE_TESTS_WORKSPACE
     : path.join(__dirname, '..', '..', 'src', 'test');
 
-const channel = (process.env.VSC_JUPYTER_CI_TEST_VSC_CHANNEL || '').toLowerCase().includes('insiders')
-    ? 'insiders'
-    : 'stable';
+const channel = (process.env.VSC_JUPYTER_CI_TEST_VSC_CHANNEL || '').toLowerCase().includes('stable')
+    ? 'stable'
+    : 'insiders';
 
 function computePlatform() {
     switch (process.platform) {
