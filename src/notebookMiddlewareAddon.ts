@@ -64,7 +64,7 @@ import {
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { IVSCodeNotebook } from './common/types';
-import { isThenable } from './common/utils';
+import { isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -137,7 +137,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document event
-        if (this.shouldProvideIntellisense(event.document.uri) && client) {
+        if (isNotebookCell(event.document.uri) && client) {
             const newEvent = this.converter.toOutgoingChangeEvent(event);
 
             // Next will not use our params here. We need to send directly as next with the event
@@ -152,7 +152,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.initializeTracing();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (this.shouldProvideIntellisense(document.uri)) {
+        if (isNotebookCell(document.uri)) {
             if (!this.converter.hasFiredOpen(document)) {
                 this.converter.firedOpen(document);
                 const newDoc = this.converter.toOutgoingDocument(document);
@@ -167,7 +167,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public didClose(document: TextDocument, next: (ev: TextDocument) => void): () => void {
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (this.shouldProvideIntellisense(document.uri)) {
+        if (isNotebookCell(document.uri)) {
             const newDoc = this.converter.firedClose(document);
             if (newDoc) {
                 // Cell delete causes this callback, but won't fire the close event because it's not
@@ -499,7 +499,8 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
-        if (this.shouldProvideIntellisense(uri)) {
+        const incomingUri = this.converter.toIncomingUri(uri);
+        if (incomingUri && this.shouldProvideIntellisense(incomingUri)) {
             // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
             // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
             // Otherwise old messages for cells that didn't change this time won't go away.

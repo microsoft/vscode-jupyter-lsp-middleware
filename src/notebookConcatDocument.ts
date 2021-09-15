@@ -123,7 +123,9 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
         this.updateCellTracking();
     }
 
-    notebook: NotebookDocument | undefined = undefined;
+    public get notebook(): NotebookDocument {
+        return this._notebook;
+    }
 
     public dispose(): void {
         this.onDidChangeSubscription.dispose();

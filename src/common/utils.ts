@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import { TextDocument, Uri } from 'vscode';
+
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
 export const InteractiveScheme = 'vscode-interactive';
@@ -22,6 +24,19 @@ export function isEqual(a: string[], b: string[]): boolean {
     }
 
     return true;
+}
+
+function isUri(resource?: Uri | any): resource is Uri {
+    if (!resource) {
+        return false;
+    }
+    const uri = resource as Uri;
+    return typeof uri.path === 'string' && typeof uri.scheme === 'string';
+}
+
+export function isNotebookCell(documentOrUri: TextDocument | Uri): boolean {
+    const uri = isUri(documentOrUri) ? documentOrUri : documentOrUri.uri;
+    return uri.scheme.includes(NotebookCellScheme) || uri.scheme.includes(InteractiveInputScheme);
 }
 
 export function splitLines(

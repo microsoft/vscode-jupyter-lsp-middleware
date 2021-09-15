@@ -448,6 +448,19 @@ export class NotebookConverter implements Disposable {
         return this.toIncomingLocationFromRange(cell, new Range(position, position)).range.start;
     }
 
+    public toIncomingUri(outgoingUri: Uri, range?: Range) {
+        const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
+        if (wrapper && wrapper.notebook) {
+            if (range) {
+                const location = wrapper.locationAt(range);
+                return location.uri;
+            } else {
+                return wrapper.notebook.uri;
+            }
+        }
+        return outgoingUri;
+    }
+
     private getTextDocumentAtLocation(location: Location): TextDocument | undefined {
         const key = NotebookConverter.getDocumentKey(location.uri);
         const wrapper = this.activeDocuments.get(key);
@@ -614,15 +627,6 @@ export class NotebookConverter implements Disposable {
     // Should be if it's in a notebook cell or if it's in a notebook concat document
     private locationNeedsConversion(locationUri: Uri): boolean {
         return locationUri.scheme === NotebookCellScheme || this.getWrapperFromOutgoingUri(locationUri) !== undefined;
-    }
-
-    private toIncomingUri(outgoingUri: Uri, range: Range) {
-        const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
-        if (wrapper) {
-            const location = wrapper.locationAt(range);
-            return location.uri;
-        }
-        return outgoingUri;
     }
 
     private toIncomingCompletion(cell: TextDocument, item: CompletionItem) {
