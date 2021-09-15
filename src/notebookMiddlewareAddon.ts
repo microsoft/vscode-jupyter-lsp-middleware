@@ -65,7 +65,6 @@ import {
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { IVSCodeNotebook } from './common/types';
 import { isThenable } from './common/utils';
-import { isNotebookCell } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -85,8 +84,8 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         private readonly traceInfo: (...args: any[]) => void,
         cellSelector: string | DocumentSelector,
         notebookFileRegex: RegExp,
-        private readonly pythonPath?: string,
-        private readonly trace?: (message: string) => void
+        private readonly pythonPath: string,
+        private readonly shouldProvideIntellisense: (uri: Uri) => boolean
     ) {
         this.converter = new NotebookConverter(notebookApi, cellSelector, notebookFileRegex);
         this.didChangeCellsDisposable = this.converter.onDidChangeCells(this.onDidChangeCells.bind(this));
@@ -99,11 +98,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.didClose = this.didClose.bind(this);
         this.willSave = this.willSave.bind(this);
         this.willSaveWaitUntil = this.willSaveWaitUntil.bind(this);
-
-        // Turn off tracing if no trace method
-        if (!trace) {
-            this.traceDisposable = { dispose: () => {} };
-        }
     }
 
     public workspace = {
@@ -112,8 +106,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             token: CancellationToken,
             next: ConfigurationRequest.HandlerSignature
         ) => {
-            // Handle workspace/configuration requests. Python handles this itself and
-            // doesn't forward to the middleware addon so this shouldn't be called in that case
+            // Handle workspace/configuration requests.
             let settings = next(params, token);
             if (isThenable(settings)) {
                 settings = await settings;
@@ -139,20 +132,18 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.converter.dispose();
     }
 
-    public didChange(event: TextDocumentChangeEvent, next: (ev: TextDocumentChangeEvent) => void): void {
+    public didChange(event: TextDocumentChangeEvent): void {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document event
-        if (isNotebookCell(event.document.uri) && client) {
+        if (this.shouldProvideIntellisense(event.document.uri) && client) {
             const newEvent = this.converter.toOutgoingChangeEvent(event);
 
             // Next will not use our params here. We need to send directly as next with the event
             // doesn't let the event change the value
             const params = client.code2ProtocolConverter.asChangeTextDocumentParams(newEvent);
             client.sendNotification(DidChangeTextDocumentNotification.type, params);
-        } else {
-            next(event);
         }
     }
 
@@ -161,14 +152,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.initializeTracing();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             if (!this.converter.hasFiredOpen(document)) {
                 this.converter.firedOpen(document);
                 const newDoc = this.converter.toOutgoingDocument(document);
                 next(newDoc);
             }
-        } else {
-            next(document);
         }
 
         return () => {
@@ -178,7 +167,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public didClose(document: TextDocument, next: (ev: TextDocument) => void): () => void {
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.firedClose(document);
             if (newDoc) {
                 // Cell delete causes this callback, but won't fire the close event because it's not
@@ -187,10 +176,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
 
             next(document);
-        } else {
-            next(document);
         }
-
         return () => {
             // Do nothing
         };
@@ -222,7 +208,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideCompletionItemsSignature
     ) {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, context, token);
@@ -231,7 +217,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingCompletions(document, result);
         }
-        return next(document, position, context, token);
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
@@ -241,7 +226,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideHoverSignature
     ) {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, token);
@@ -250,7 +235,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingHover(document, result);
         }
-        return next(document, position, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -273,12 +257,11 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideSignatureHelpSignature
     ): ProviderResult<SignatureHelp> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
             return next(newDoc, newPos, context, token);
         }
-        return next(document, position, context, token);
     }
 
     public provideDefinition(
@@ -287,7 +270,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDefinitionSignature
     ): ProviderResult<Definition | DefinitionLink[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, token);
@@ -296,7 +279,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingLocations(result);
         }
-        return next(document, position, token);
     }
 
     public provideReferences(
@@ -308,7 +290,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideReferencesSignature
     ): ProviderResult<Location[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, options, token);
@@ -317,7 +299,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingLocations(result);
         }
-        return next(document, position, options, token);
     }
 
     public provideDocumentHighlights(
@@ -326,7 +307,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentHighlightsSignature
     ): ProviderResult<DocumentHighlight[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPos, token);
@@ -335,7 +316,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingHighlight(document, result);
         }
-        return next(document, position, token);
     }
 
     public provideDocumentSymbols(
@@ -343,7 +323,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentSymbolsSignature
     ): ProviderResult<SymbolInformation[] | DocumentSymbol[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, token);
             if (isThenable(result)) {
@@ -351,7 +331,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingSymbols(document, result);
         }
-        return next(document, token);
     }
 
     public provideWorkspaceSymbols(
@@ -359,6 +338,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideWorkspaceSymbolsSignature
     ): ProviderResult<SymbolInformation[]> {
+        // Is this one possible to check?
         const result = next(query, token);
         if (isThenable(result)) {
             return result.then(this.converter.toIncomingWorkspaceSymbols.bind(this.converter));
@@ -369,29 +349,27 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     // eslint-disable-next-line class-methods-use-this
     public provideCodeActions(
         document: TextDocument,
-        range: Range,
-        context: CodeActionContext,
-        token: CancellationToken,
-        next: ProvideCodeActionsSignature
+        _range: Range,
+        _context: CodeActionContext,
+        _token: CancellationToken,
+        _next: ProvideCodeActionsSignature
     ): ProviderResult<(Command | CodeAction)[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideCodeActions not currently supported for notebooks');
             return undefined;
         }
-        return next(document, range, context, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public provideCodeLenses(
         document: TextDocument,
-        token: CancellationToken,
-        next: ProvideCodeLensesSignature
+        _token: CancellationToken,
+        _next: ProvideCodeLensesSignature
     ): ProviderResult<CodeLens[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideCodeLenses not currently supported for notebooks');
             return undefined;
         }
-        return next(document, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -410,69 +388,65 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     // eslint-disable-next-line class-methods-use-this
     public provideDocumentFormattingEdits(
         document: TextDocument,
-        options: FormattingOptions,
-        token: CancellationToken,
-        next: ProvideDocumentFormattingEditsSignature
+        _options: FormattingOptions,
+        _token: CancellationToken,
+        _next: ProvideDocumentFormattingEditsSignature
     ): ProviderResult<TextEdit[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentFormattingEdits not currently supported for notebooks');
             return undefined;
         }
-        return next(document, options, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public provideDocumentRangeFormattingEdits(
         document: TextDocument,
-        range: Range,
-        options: FormattingOptions,
-        token: CancellationToken,
-        next: ProvideDocumentRangeFormattingEditsSignature
+        _range: Range,
+        _options: FormattingOptions,
+        _token: CancellationToken,
+        _next: ProvideDocumentRangeFormattingEditsSignature
     ): ProviderResult<TextEdit[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentRangeFormattingEdits not currently supported for notebooks');
             return undefined;
         }
-        return next(document, range, options, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public provideOnTypeFormattingEdits(
         document: TextDocument,
-        position: Position,
-        ch: string,
-        options: FormattingOptions,
-        token: CancellationToken,
-        next: ProvideOnTypeFormattingEditsSignature
+        _position: Position,
+        _ch: string,
+        _options: FormattingOptions,
+        _token: CancellationToken,
+        _next: ProvideOnTypeFormattingEditsSignature
     ): ProviderResult<TextEdit[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideOnTypeFormattingEdits not currently supported for notebooks');
             return undefined;
         }
-        return next(document, position, ch, options, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public provideRenameEdits(
         document: TextDocument,
-        position: Position,
-        newName: string,
-        token: CancellationToken,
-        next: ProvideRenameEditsSignature
+        _position: Position,
+        _newName: string,
+        _token: CancellationToken,
+        _next: ProvideRenameEditsSignature
     ): ProviderResult<WorkspaceEdit> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideRenameEdits not currently supported for notebooks');
             return undefined;
         }
-        return next(document, position, newName, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public prepareRename(
         document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: PrepareRenameSignature
+        _position: Position,
+        _token: CancellationToken,
+        _next: PrepareRenameSignature
     ): ProviderResult<
         | Range
         | {
@@ -480,24 +454,22 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
               placeholder: string;
           }
     > {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('prepareRename not currently supported for notebooks');
             return undefined;
         }
-        return next(document, position, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public provideDocumentLinks(
         document: TextDocument,
-        token: CancellationToken,
-        next: ProvideDocumentLinksSignature
+        _token: CancellationToken,
+        _next: ProvideDocumentLinksSignature
     ): ProviderResult<DocumentLink[]> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentLinks not currently supported for notebooks');
             return undefined;
         }
-        return next(document, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -516,23 +488,27 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     // eslint-disable-next-line class-methods-use-this
     public provideDeclaration(
         document: TextDocument,
-        position: VPosition,
-        token: CancellationToken,
-        next: ProvideDeclarationSignature
+        _position: VPosition,
+        _token: CancellationToken,
+        _next: ProvideDeclarationSignature
     ): ProviderResult<VDeclaration> {
-        if (isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDeclaration not currently supported for notebooks');
             return undefined;
         }
-        return next(document, position, token);
     }
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
-        // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-        // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-        // Otherwise old messages for cells that didn't change this time won't go away.
-        const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
-        [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+        if (this.shouldProvideIntellisense(uri)) {
+            // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+            // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+            // Otherwise old messages for cells that didn't change this time won't go away.
+            const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
+            [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+        } else {
+            // Swallow all other diagnostics
+            next(uri, []);
+        }
     }
 
     private onDidChangeCells(e: TextDocumentChangeEvent) {
@@ -548,10 +524,10 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     private initializeTracing() {
-        if (!this.traceDisposable && this.trace) {
+        if (!this.traceDisposable && this.traceInfo) {
             const client = this.getClient();
             if (client) {
-                this.traceDisposable = client.onNotification('window/logMessage', this.trace);
+                this.traceDisposable = client.onNotification('window/logMessage', this.traceInfo);
             }
         }
     }

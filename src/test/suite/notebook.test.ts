@@ -3,7 +3,6 @@
 
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 import { assert } from 'chai';
-import * as path from 'path';
 import {
     window,
     commands,
@@ -13,7 +12,8 @@ import {
     languages,
     Range,
     WorkspaceEdit,
-    workspace
+    workspace,
+    Uri
 } from 'vscode';
 import { DocumentFilter } from 'vscode-languageserver-protocol';
 import {
@@ -30,15 +30,14 @@ import {
     insertMarkdownCell,
     captureScreenShot,
     captureOutputMessages,
-    LanguageServer
+    LanguageServer,
+    sleep
 } from './helper';
 
 export const PYTHON_LANGUAGE = 'python';
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
 export const NOTEBOOK_SELECTOR: DocumentFilter[] = [
-    { scheme: 'untitled', language: PYTHON_LANGUAGE },
-    { scheme: 'vscode-notebook', language: PYTHON_LANGUAGE },
     { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
     { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
 ];
@@ -46,29 +45,28 @@ export const NOTEBOOK_SELECTOR: DocumentFilter[] = [
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Notebook tests', function () {
     const disposables: Disposable[] = [];
-    const languageServers: LanguageServer[] = [];
+    let languageServer: LanguageServer | undefined = undefined;
+    let allowIntellisense = true;
+    const shouldProvideIntellisense = (_uri: Uri) => {
+        return allowIntellisense;
+    };
     this.timeout(120_000);
     suiteSetup(async function () {
         this.timeout(120_000);
         if (!canRunNotebookTests()) {
             return this.skip();
         }
+        languageServer = await createLanguageServer(
+            'lsp-middleware-test',
+            NOTEBOOK_SELECTOR,
+            shouldProvideIntellisense
+        );
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).
     setup(async function () {
         traceInfo(`Start Test ${this.currentTest?.title}`);
-        const uri = await createEmptyPythonNotebook(disposables);
-
-        // Use this file to create our language server
-        const baseName = path.basename(uri.fsPath);
-        const filter: DocumentFilter = {
-            pattern: uri.fsPath
-        };
-        const languageServer = await createLanguageServer(baseName, [filter]);
-        if (languageServer) {
-            languageServers.push(languageServer);
-        }
-
+        allowIntellisense = true;
+        await createEmptyPythonNotebook(disposables);
         traceInfo(`Start Test (completed) ${this.currentTest?.title}`);
     });
     teardown(async function () {
@@ -82,7 +80,7 @@ suite('Notebook tests', function () {
     });
     suiteTeardown(async () => {
         closeNotebooksAndCleanUpAfterTests(disposables);
-        await Promise.all(languageServers.map((l) => l.dispose()));
+        await languageServer?.dispose();
     });
     test('Add some cells and get completions', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)\na = 1', { index: 0 });
@@ -225,5 +223,14 @@ suite('Notebook tests', function () {
             diagnostics.find((item) => item.range.start.line == 1),
             'Line should be consistent'
         );
+    });
+    test('Make sure diags are skipped when not allowing', async () => {
+        allowIntellisense = false;
+        await insertCodeCell('import sys\nprint(sys.executable)');
+        await insertCodeCell('import sys\nprint(sys.executable)');
+        const cell3 = await insertCodeCell('import system\nprint(sys.executable)', { index: 1 });
+        await sleep(1000); // Give some time for diag to show up
+        const diagnostics = languages.getDiagnostics(cell3.document.uri);
+        assert.isEmpty(diagnostics, 'No diagnostics should be found in the third cell');
     });
 });
