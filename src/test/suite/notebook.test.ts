@@ -30,7 +30,8 @@ import {
     insertMarkdownCell,
     captureScreenShot,
     captureOutputMessages,
-    LanguageServer
+    LanguageServer,
+    sleep
 } from './helper';
 
 export const PYTHON_LANGUAGE = 'python';
@@ -64,6 +65,7 @@ suite('Notebook tests', function () {
     // Use same notebook without starting kernel in every single test (use one for whole suite).
     setup(async function () {
         traceInfo(`Start Test ${this.currentTest?.title}`);
+        allowIntellisense = true;
         await createEmptyPythonNotebook(disposables);
         traceInfo(`Start Test (completed) ${this.currentTest?.title}`);
     });
@@ -221,5 +223,14 @@ suite('Notebook tests', function () {
             diagnostics.find((item) => item.range.start.line == 1),
             'Line should be consistent'
         );
+    });
+    test('Make sure diags are skipped when not allowing', async () => {
+        allowIntellisense = false;
+        await insertCodeCell('import sys\nprint(sys.executable)');
+        await insertCodeCell('import sys\nprint(sys.executable)');
+        const cell3 = await insertCodeCell('import system\nprint(sys.executable)', { index: 1 });
+        await sleep(1000); // Give some time for diag to show up
+        const diagnostics = languages.getDiagnostics(cell3.document.uri);
+        assert.isEmpty(diagnostics, 'No diagnostics should be found in the third cell');
     });
 });
