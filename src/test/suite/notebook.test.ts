@@ -47,8 +47,12 @@ suite('Notebook tests', function () {
     const disposables: Disposable[] = [];
     let languageServer: LanguageServer | undefined = undefined;
     let allowIntellisense = true;
-    const shouldProvideIntellisense = (_uri: Uri) => {
-        return allowIntellisense;
+    let emptyNotebookUri: Uri | undefined;
+    const shouldProvideIntellisense = (uri: Uri) => {
+        if (emptyNotebookUri?.fsPath === uri.fsPath) {
+            return allowIntellisense;
+        }
+        return false;
     };
     this.timeout(120_000);
     suiteSetup(async function () {
@@ -66,7 +70,7 @@ suite('Notebook tests', function () {
     setup(async function () {
         traceInfo(`Start Test ${this.currentTest?.title}`);
         allowIntellisense = true;
-        await createEmptyPythonNotebook(disposables);
+        emptyNotebookUri = await createEmptyPythonNotebook(disposables);
         traceInfo(`Start Test (completed) ${this.currentTest?.title}`);
     });
     teardown(async function () {
