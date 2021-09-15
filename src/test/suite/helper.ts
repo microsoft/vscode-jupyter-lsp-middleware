@@ -23,7 +23,7 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createMiddlewareAddon } from '../..';
+import { createNotebookMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 
@@ -746,7 +746,10 @@ export function noop() {
 }
 
 export function traceInfo(...args: any[]) {
-    console.log(args);
+    if (process.env.IS_CI || process.env.FORCE_LOGGING) {
+        outputMessages.push(args.toString());
+        console.log(...args);
+    }
 }
 
 /**
@@ -871,7 +874,8 @@ async function startLanguageServer(
     outputChannel: string,
     languageServerFolder: string,
     pythonPath: string,
-    selector: DocumentSelector
+    selector: DocumentSelector,
+    shouldProvideIntellisense: (uri: vscode.Uri) => boolean
 ): Promise<LanguageServer> {
     const bundlePath = path.join(languageServerFolder, 'server.bundle.js');
     const nonBundlePath = path.join(languageServerFolder, 'server.js');
@@ -906,14 +910,14 @@ async function startLanguageServer(
         },
         outputChannel: vscode.window.createOutputChannel(outputChannel),
         revealOutputChannelOn: RevealOutputChannelOn.Never,
-        middleware: createMiddlewareAddon(
+        middleware: createNotebookMiddleware(
             notebookApi,
             () => languageClient,
             traceInfo,
             selector,
             /.*\.(ipynb|interactive)/m,
             pythonPath,
-            (message) => outputMessages.push(message)
+            shouldProvideIntellisense
         ),
         connectionOptions: {
             cancellationStrategy
@@ -944,7 +948,8 @@ async function startLanguageServer(
 
 export async function createLanguageServer(
     outputChannel: string,
-    selector: DocumentSelector
+    selector: DocumentSelector,
+    shouldProvideIntellisense: (uri: vscode.Uri) => boolean
 ): Promise<LanguageServer | undefined> {
     // Python should be installed too.
     const python = vscode.extensions.getExtension('ms-python.python');
@@ -960,6 +965,12 @@ export async function createLanguageServer(
 
     // If it is, use it to start the language server
     if (pylance) {
-        return startLanguageServer(outputChannel, path.join(pylance.extensionPath, 'dist'), pythonPath, selector);
+        return startLanguageServer(
+            outputChannel,
+            path.join(pylance.extensionPath, 'dist'),
+            pythonPath,
+            selector,
+            shouldProvideIntellisense
+        );
     }
 }
