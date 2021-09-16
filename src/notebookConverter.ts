@@ -685,9 +685,11 @@ export class NotebookConverter implements Disposable {
     private onDidCloseNotebook(doc: NotebookDocument) {
         if (this.notebookFilter.test(doc.uri.fsPath)) {
             const key = NotebookConverter.getDocumentKey(doc.uri);
-            const wrapper = this.getTextDocumentWrapper(doc.uri);
-            this.pendingCloseDocuments.set(key, wrapper);
-            this.deleteWrapper(wrapper);
+            const wrapper = this.activeDocuments.get(key);
+            if (wrapper) {
+                this.pendingCloseDocuments.set(key, wrapper);
+                this.deleteWrapper(wrapper);
+            }
         }
     }
 
