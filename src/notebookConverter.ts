@@ -450,15 +450,24 @@ export class NotebookConverter implements Disposable {
 
     public toIncomingUri(outgoingUri: Uri, range?: Range) {
         const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
+        let result: Uri | undefined;
         if (wrapper && wrapper.notebook) {
             if (range) {
                 const location = wrapper.locationAt(range);
-                return location.uri;
+                result = location.uri;
             } else {
-                return wrapper.notebook.uri;
+                result = wrapper.notebook.uri;
             }
         }
-        return outgoingUri;
+        // Might be deleted, check for pending delete
+        if (!result) {
+            this.pendingCloseDocuments.forEach((n) => {
+                if (this.arePathsSame(n.uri.fsPath, outgoingUri.fsPath)) {
+                    result = n.notebook.uri;
+                }
+            });
+        }
+        return result || outgoingUri;
     }
 
     private getTextDocumentAtLocation(location: Location): TextDocument | undefined {
@@ -685,9 +694,11 @@ export class NotebookConverter implements Disposable {
     private onDidCloseNotebook(doc: NotebookDocument) {
         if (this.notebookFilter.test(doc.uri.fsPath)) {
             const key = NotebookConverter.getDocumentKey(doc.uri);
-            const wrapper = this.getTextDocumentWrapper(doc.uri);
-            this.pendingCloseDocuments.set(key, wrapper);
-            this.deleteWrapper(wrapper);
+            const wrapper = this.activeDocuments.get(key);
+            if (wrapper) {
+                this.pendingCloseDocuments.set(key, wrapper);
+                this.deleteWrapper(wrapper);
+            }
         }
     }
 

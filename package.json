@@ -1,6 +1,6 @@
 {
     "name": "@vscode/jupyter-lsp-middleware",
-    "version": "0.2.11",
+    "version": "0.2.12",
     "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
@@ -30,7 +30,6 @@
         "@types/sinon": "^10.0.2",
         "@types/tmp": "^0.2.1",
         "@types/uuid": "^3.4.3",
-        "@types/vscode": "~1.53.0",
         "chai": "^4.3.4",
         "fs-extra": "^10.0.0",
         "glob": "^7.1.4",
