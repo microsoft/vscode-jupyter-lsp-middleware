@@ -19,6 +19,7 @@ import {
     DocumentSymbol,
     FormattingOptions,
     Location,
+    NotebookDocument,
     Position,
     Position as VPosition,
     ProviderResult,
@@ -37,6 +38,8 @@ import {
     ConfigurationParams,
     ConfigurationRequest,
     DidChangeTextDocumentNotification,
+    DidCloseTextDocumentNotification,
+    DidOpenTextDocumentNotification,
     HandleDiagnosticsSignature,
     LanguageClient,
     Middleware,
@@ -66,6 +69,7 @@ import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/de
 import { IVSCodeNotebook } from './common/types';
 import { isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
+
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
  *
@@ -130,6 +134,32 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.traceDisposable = undefined;
         this.didChangeCellsDisposable.dispose();
         this.converter.dispose();
+    }
+
+    public stopWatching(notebook: NotebookDocument): void {
+        // Just close the document. This should cause diags and other things to be cleared
+        const client = this.getClient();
+        if (client && notebook.cellCount > 0) {
+            const outgoing = this.converter.toOutgoingDocument(notebook.cellAt(0).document);
+            const params = client.code2ProtocolConverter.asCloseTextDocumentParams(outgoing);
+            client.sendNotification(DidCloseTextDocumentNotification.type, params);
+
+            // Internally do not track anymore
+            this.converter.remove(notebook.cellAt(0).document);
+        }
+    }
+
+    public startWatching(notebook: NotebookDocument): void {
+        // We need to talk directly to the language client here.
+        const client = this.getClient();
+
+        // Mimic a document open
+        if (client && notebook.cellCount > 0) {
+            this.didOpen(notebook.cellAt(0).document, (ev) => {
+                const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
+                client.sendNotification(DidOpenTextDocumentNotification.type, params);
+            })
+        }
     }
 
     public didChange(event: TextDocumentChangeEvent): void {
