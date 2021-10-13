@@ -243,7 +243,8 @@ export class NotebookConverter implements Disposable {
             document: this.toOutgoingDocument(cellEvent.document),
             contentChanges: cellEvent.contentChanges.map(
                 this.toOutgoingContentChangeEvent.bind(this, cellEvent.document)
-            )
+            ),
+            reason: undefined
         };
     }
 

@@ -8,7 +8,7 @@
         "compile": "tsc -p ./",
         "copyTestAssets": "node ./scripts/prepareTest.js",
         "compilewatch": "tsc -watch -p ./",
-        "buildTests": "npm run copyTestAssets && npm run compilewatch",
+        "buildTests": "npm run download-api && npm run copyTestAssets && npm run compilewatch",
         "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
         "download-api": "vscode-dts dev",
         "postdownload-api": "vscode-dts main",

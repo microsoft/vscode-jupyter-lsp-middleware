@@ -23,10 +23,9 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware } from '../..';
+import { createNotebookMiddleware, createHidingMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
-import { createHidingMiddleware } from '../../../dist';
 
 export interface Ctor<T> {
     new (): T;
