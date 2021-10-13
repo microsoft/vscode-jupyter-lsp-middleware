@@ -78,7 +78,6 @@ import { NotebookConverter } from './notebookConverter';
  */
 export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private converter: NotebookConverter;
-
     private didChangeCellsDisposable: Disposable;
     private traceDisposable: Disposable | undefined;
 
@@ -144,7 +143,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const params = client.code2ProtocolConverter.asCloseTextDocumentParams(outgoing);
             client.sendNotification(DidCloseTextDocumentNotification.type, params);
 
-            // Internally do not track anymore
+            // Set the diagnostics to nothing for all the cells
+            if (client.diagnostics) {
+                notebook.getCells().forEach(c => {
+                    client.diagnostics?.set(c.document.uri, []);
+                })
+            }
+
+            // Remove from tracking by the converter
             this.converter.remove(notebook.cellAt(0).document);
         }
     }
@@ -530,12 +536,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
         const incomingUri = this.converter.toIncomingUri(uri);
-        if (incomingUri && this.shouldProvideIntellisense(incomingUri)) {
-            // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-            // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-            // Otherwise old messages for cells that didn't change this time won't go away.
-            const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
-            [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+        if (incomingUri && incomingUri != uri) {
+            if (this.shouldProvideIntellisense(incomingUri)) {
+                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+                // Otherwise old messages for cells that didn't change this time won't go away.
+                const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
+                [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+            } 
         } else {
             // Swallow all other diagnostics
             next(uri, []);
