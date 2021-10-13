@@ -243,7 +243,8 @@ export class NotebookConverter implements Disposable {
             document: this.toOutgoingDocument(cellEvent.document),
             contentChanges: cellEvent.contentChanges.map(
                 this.toOutgoingContentChangeEvent.bind(this, cellEvent.document)
-            )
+            ),
+            reason: undefined
         };
     }
 
@@ -468,6 +469,14 @@ export class NotebookConverter implements Disposable {
             });
         }
         return result || outgoingUri;
+    }
+
+    public remove(cell: TextDocument) {
+        const key = NotebookConverter.getDocumentKey(cell.uri);
+        const wrapper = this.activeDocuments.get(key); 
+        if (wrapper) {
+            this.deleteWrapper(wrapper);
+        }
     }
 
     private getTextDocumentAtLocation(location: Location): TextDocument | undefined {

@@ -272,7 +272,8 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
         // Send all of the changes
         this.onCellsChangedEmitter.fire({
             document: this,
-            contentChanges: changes
+            contentChanges: changes,
+            reason: undefined
         });
     }
 
@@ -309,7 +310,8 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
         // Send the event
         this.onCellsChangedEmitter.fire({
             document: this,
-            contentChanges: changes
+            contentChanges: changes,
+            reason: undefined
         });
     }
 
@@ -331,7 +333,8 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
                     rangeLength: this.cellTracking.reduce((p, c) => p + c.length, 0),
                     rangeOffset: 0
                 }
-            ]
+            ],
+            reason: undefined
         });
     }
 }

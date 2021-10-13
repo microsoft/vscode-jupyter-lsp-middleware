@@ -23,7 +23,7 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware } from '../..';
+import { createNotebookMiddleware, createHidingMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 
@@ -873,6 +873,7 @@ export class LanguageServer implements vscode.Disposable {
 async function startLanguageServer(
     outputChannel: string,
     languageServerFolder: string,
+    hidingMiddleware: boolean,
     pythonPath: string,
     selector: DocumentSelector,
     shouldProvideIntellisense: (uri: vscode.Uri) => boolean
@@ -901,6 +902,16 @@ async function startLanguageServer(
         }
     };
 
+    const middleware = hidingMiddleware ? createHidingMiddleware() : createNotebookMiddleware(
+        notebookApi,
+        () => languageClient,
+        traceInfo,
+        selector,
+        /.*\.(ipynb|interactive)/m,
+        pythonPath,
+        shouldProvideIntellisense
+    );
+
     // Client options need to include our middleware piece
     const clientOptions: vslc.LanguageClientOptions = {
         documentSelector: selector,
@@ -910,15 +921,7 @@ async function startLanguageServer(
         },
         outputChannel: vscode.window.createOutputChannel(outputChannel),
         revealOutputChannelOn: RevealOutputChannelOn.Never,
-        middleware: createNotebookMiddleware(
-            notebookApi,
-            () => languageClient,
-            traceInfo,
-            selector,
-            /.*\.(ipynb|interactive)/m,
-            pythonPath,
-            shouldProvideIntellisense
-        ),
+        middleware,
         connectionOptions: {
             cancellationStrategy
         }
@@ -949,6 +952,7 @@ async function startLanguageServer(
 export async function createLanguageServer(
     outputChannel: string,
     selector: DocumentSelector,
+    hidingMiddleware: boolean,
     shouldProvideIntellisense: (uri: vscode.Uri) => boolean
 ): Promise<LanguageServer | undefined> {
     // Python should be installed too.
@@ -968,6 +972,7 @@ export async function createLanguageServer(
         return startLanguageServer(
             outputChannel,
             path.join(pylance.extensionPath, 'dist'),
+            hidingMiddleware,
             pythonPath,
             selector,
             shouldProvideIntellisense

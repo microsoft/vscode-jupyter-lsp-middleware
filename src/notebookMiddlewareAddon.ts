@@ -19,6 +19,7 @@ import {
     DocumentSymbol,
     FormattingOptions,
     Location,
+    NotebookDocument,
     Position,
     Position as VPosition,
     ProviderResult,
@@ -37,6 +38,8 @@ import {
     ConfigurationParams,
     ConfigurationRequest,
     DidChangeTextDocumentNotification,
+    DidCloseTextDocumentNotification,
+    DidOpenTextDocumentNotification,
     HandleDiagnosticsSignature,
     LanguageClient,
     Middleware,
@@ -66,6 +69,7 @@ import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/de
 import { IVSCodeNotebook } from './common/types';
 import { isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
+
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
  *
@@ -74,7 +78,6 @@ import { NotebookConverter } from './notebookConverter';
  */
 export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private converter: NotebookConverter;
-
     private didChangeCellsDisposable: Disposable;
     private traceDisposable: Disposable | undefined;
 
@@ -130,6 +133,39 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.traceDisposable = undefined;
         this.didChangeCellsDisposable.dispose();
         this.converter.dispose();
+    }
+
+    public stopWatching(notebook: NotebookDocument): void {
+        // Just close the document. This should cause diags and other things to be cleared
+        const client = this.getClient();
+        if (client && notebook.cellCount > 0) {
+            const outgoing = this.converter.toOutgoingDocument(notebook.cellAt(0).document);
+            const params = client.code2ProtocolConverter.asCloseTextDocumentParams(outgoing);
+            client.sendNotification(DidCloseTextDocumentNotification.type, params);
+
+            // Set the diagnostics to nothing for all the cells
+            if (client.diagnostics) {
+                notebook.getCells().forEach(c => {
+                    client.diagnostics?.set(c.document.uri, []);
+                })
+            }
+
+            // Remove from tracking by the converter
+            this.converter.remove(notebook.cellAt(0).document);
+        }
+    }
+
+    public startWatching(notebook: NotebookDocument): void {
+        // We need to talk directly to the language client here.
+        const client = this.getClient();
+
+        // Mimic a document open
+        if (client && notebook.cellCount > 0) {
+            this.didOpen(notebook.cellAt(0).document, (ev) => {
+                const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
+                client.sendNotification(DidOpenTextDocumentNotification.type, params);
+            })
+        }
     }
 
     public didChange(event: TextDocumentChangeEvent): void {
@@ -500,12 +536,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
         const incomingUri = this.converter.toIncomingUri(uri);
-        if (incomingUri && this.shouldProvideIntellisense(incomingUri)) {
-            // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-            // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-            // Otherwise old messages for cells that didn't change this time won't go away.
-            const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
-            [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+        if (incomingUri && incomingUri != uri) {
+            if (this.shouldProvideIntellisense(incomingUri)) {
+                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+                // Otherwise old messages for cells that didn't change this time won't go away.
+                const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
+                [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+            } 
         } else {
             // Swallow all other diagnostics
             next(uri, []);

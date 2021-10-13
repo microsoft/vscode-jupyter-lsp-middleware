@@ -63,6 +63,7 @@ suite('Notebook tests', function () {
         languageServer = await createLanguageServer(
             'lsp-middleware-test',
             NOTEBOOK_SELECTOR,
+            false,
             shouldProvideIntellisense
         );
     });
