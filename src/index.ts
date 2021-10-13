@@ -4,6 +4,7 @@ import { Disposable, DocumentSelector, NotebookDocument, Uri } from 'vscode';
 import { LanguageClient, Middleware } from 'vscode-languageclient/node';
 
 import { IVSCodeNotebook } from './common/types';
+import { HidingMiddlewareAddon } from './hidingMiddlewareAddon';
 import { NotebookMiddlewareAddon } from './notebookMiddlewareAddon';
 
 export type NotebookMiddleware = Middleware & Disposable & {
@@ -11,6 +12,9 @@ export type NotebookMiddleware = Middleware & Disposable & {
     startWatching(notebook: NotebookDocument): void;
 }
 
+export function createHidingMiddleware(): Middleware & Disposable {
+    return new HidingMiddlewareAddon();
+}
 
 // Factory method for creating the middleware
 export function createNotebookMiddleware(
