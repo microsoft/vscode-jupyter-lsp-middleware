@@ -188,7 +188,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.initializeTracing();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri)) {
+        if (isNotebookCell(document.uri) && this.shouldProvideIntellisense(document.uri)) {
             if (!this.converter.hasFiredOpen(document)) {
                 this.converter.firedOpen(document);
                 const newDoc = this.converter.toOutgoingDocument(document);
