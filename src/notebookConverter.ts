@@ -41,14 +41,13 @@ import {
     SemanticTokens,
     SemanticTokensEdits,
     SemanticTokensEdit,
-    LinkedEditingRanges
+    LinkedEditingRanges,
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
 import * as path from 'path';
 import { IConcatTextDocument } from './concatTextDocument';
 import { NotebookConcatDocument } from './notebookConcatDocument';
-import { start } from 'repl';
 
 /* Used by code actions. Disabled for now.
 function toRange(rangeLike: Range): Range {
@@ -270,15 +269,19 @@ export class NotebookConverter implements Disposable {
         return positions.map((p) => this.toOutgoingPosition(cell, p));
     }
 
-    public toOutgoingRange(cell: TextDocument | Uri, cellRange: Range): Range {
+    public toOutgoingRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
         const concat = this.getConcatDocument(cell);
         if (concat) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-            const startPos = concat.positionAt(new Location(uri, cellRange.start));
-            const endPos = concat.positionAt(new Location(uri, cellRange.end));
+            const notebook = this.getNotebookDocument(cell);
+            const cellDocument = cell instanceof Uri ? notebook?.getCells().find(c => c.document.uri == uri)?.document : cell;
+            const start = cellRange ? cellRange.start : new Position(0, 0);
+            const end = cellRange ? cellRange.end : cellDocument?.lineAt(cellDocument.lineCount-1).range.end || new Position(0, 0);
+            const startPos = concat.positionAt(new Location(uri, start));
+            const endPos = concat.positionAt(new Location(uri, end));
             return new Range(startPos, endPos);
         }
-        return cellRange;
+        return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
 
     public toOutgoingOffset(cell: TextDocument, offset: number): number {
@@ -954,5 +957,14 @@ export class NotebookConverter implements Disposable {
             return false;
         }
         return true;
+    }
+
+    private getNotebookDocument(cell: TextDocument | Uri): NotebookDocument | undefined {
+        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+        const key = NotebookConverter.getDocumentKey(uri);
+        let result = this.activeDocuments.get(key);
+        if (result) {
+            return result.notebook;
+        }
     }
 }

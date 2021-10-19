@@ -15,7 +15,6 @@ import {
     CompletionContext,
     CompletionItem,
     Declaration,
-    Declaration as VDeclaration,
     Definition,
     DefinitionLink,
     Diagnostic,
@@ -75,7 +74,9 @@ import {
     ResolveCodeLensSignature,
     ResolveCompletionItemSignature,
     ResolveDocumentLinkSignature,
-    ResponseError
+    ResponseError,
+    SemanticTokensRangeParams,
+    SemanticTokensRangeRequest
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
@@ -687,10 +688,27 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken, next: DocumentSemanticsTokensSignature): ProviderResult<SemanticTokens> {
-        if (this.shouldProvideIntellisense(document.uri)) {
+    public provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken, _next: DocumentSemanticsTokensSignature): ProviderResult<SemanticTokens> {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
             const newDoc = this.converter.toOutgoingDocument(document);
-            return next(newDoc, token);
+
+            // Since tokens are for a cell, we need to change the request for a range and not the entire document.
+            const newRange = this.converter.toOutgoingRange(document.uri, undefined);
+
+            const params: SemanticTokensRangeParams = {
+                textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
+                range: client.code2ProtocolConverter.asRange(newRange)
+            }
+
+            // Make the request directly (dont use the 'next' value)
+            const result = client.sendRequest(SemanticTokensRangeRequest.type, params, token);
+
+            // Then convert from protocol back to vscode types
+            return result.then(r => {
+                const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
+                return this.converter.toIncomingSemanticTokens(newDoc.uri, vscodeTokens);
+            })
         }
     }
     public provideDocumentSemanticTokensEdits(document: TextDocument, previousResultId: string, token: CancellationToken, next: DocumentSemanticsTokensEditsSignature): ProviderResult<SemanticTokensEdits | SemanticTokens> {
