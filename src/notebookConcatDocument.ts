@@ -181,7 +181,7 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
         return this.concatDocument.validatePosition(pos);
     }
 
-    public locationAt(range: Range): Location {
+    public locationAt(range: Range | Position): Location {
         return this.concatDocument.locationAt(range);
     }
 

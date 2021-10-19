@@ -658,9 +658,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPositions = this.converter.toOutgoingPosition(document, positions);
             const result = next(newDoc, newPositions, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyItems.bind(this.converter));
+                return result.then(this.converter.toIncomingCallHierarchyItems.bind(this.converter, newDoc.uri));
             }
-            return this.converter.toIncomingCallHierarchyItems(result);
+            return this.converter.toIncomingCallHierarchyItems(newDoc.uri, result);
         }
 
     }
@@ -670,9 +670,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(item.uri, item.range);
             const result = next({...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter));
+                return result.then(this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, newUri));
             }
-            return this.converter.toIncomingCallHierarchyIncomingCallItems(result);
+            return this.converter.toIncomingCallHierarchyIncomingCallItems(newUri, result);
         }
     }
     public provideCallHierarchyOutgoingCalls(item: CallHierarchyItem, token: CancellationToken, next: CallHierarchyOutgoingCallsSignature): ProviderResult<CallHierarchyOutgoingCall[]> {
@@ -681,9 +681,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(item.uri, item.range);
             const result = next({...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter));
+                return result.then(this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, newUri));
             }
-            return this.converter.toIncomingCallHierarchyOutgoingCallItems(result);
+            return this.converter.toIncomingCallHierarchyOutgoingCallItems(newUri, result);
         }
     }
 
@@ -698,9 +698,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, previousResultId, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter));
+                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter, newDoc.uri));
             }
-            return this.converter.toIncomingSemanticEdits(result);
+            return this.converter.toIncomingSemanticEdits(newDoc.uri, result);
         }
 
     }
@@ -710,9 +710,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(document, range);
             const result = next(newDoc, newRange, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter));
+                return result.then(this.converter.toIncomingSemanticTokens.bind(this.converter, newDoc.uri));
             }
-            return this.converter.toIncomingSemanticEdits(result);
+            return this.converter.toIncomingSemanticTokens(newDoc.uri, result);
         }
     }
 
@@ -722,9 +722,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPosition = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPosition, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter));
+                return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter, newDoc.uri));
             }
-            return this.converter.toIncomingLinkedEditingRanges(result);
+            return this.converter.toIncomingLinkedEditingRanges(newDoc.uri, result);
         }
 
     }

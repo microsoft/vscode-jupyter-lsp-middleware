@@ -34,7 +34,14 @@ import {
     ColorInformation,
     ColorPresentation,
     FoldingRange,
-    SelectionRange
+    SelectionRange,
+    CallHierarchyItem,
+    CallHierarchyIncomingCall,
+    CallHierarchyOutgoingCall,
+    SemanticTokens,
+    SemanticTokensEdits,
+    SemanticTokensEdit,
+    LinkedEditingRanges
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
@@ -460,6 +467,20 @@ export class NotebookConverter implements Disposable {
         return this.toIncomingLocationFromRange(cell, new Range(position, position)).range.start;
     }
 
+    public toIncomingOffset(cell: TextDocument | Uri, offset: number): number {
+        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+        const wrapper = this.getWrapperFromOutgoingUri(uri);
+        if (wrapper && wrapper.notebook) {
+            const position = wrapper.positionAt(offset);
+            const location = wrapper.locationAt(position);
+            const cell = wrapper.notebook.getCells().find((c) => c.document.uri == location.uri);
+            if (cell) {
+                return cell.document.offsetAt(location.range.start);
+            }
+        }
+        return offset;
+    }
+
     public toIncomingUri(outgoingUri: Uri, range?: Range) {
         const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
         let result: Uri | undefined;
@@ -488,7 +509,7 @@ export class NotebookConverter implements Disposable {
                 return {
                     ...c,
                     range: this.toIncomingRange(outgoingUri, c.range)
-                }
+                };
             });
         }
     }
@@ -498,9 +519,11 @@ export class NotebookConverter implements Disposable {
             return colorPresentations.map((c) => {
                 return {
                     ...c,
-                    additionalTextEdits: c.additionalTextEdits ? this.toIncomingTextEdits(outgoingUri, c.additionalTextEdits) : undefined,
+                    additionalTextEdits: c.additionalTextEdits
+                        ? this.toIncomingTextEdits(outgoingUri, c.additionalTextEdits)
+                        : undefined,
                     textEdit: c.textEdit ? this.toIncomingTextEdit(outgoingUri, c.textEdit) : undefined
-                }
+                };
             });
         }
     }
@@ -515,7 +538,7 @@ export class NotebookConverter implements Disposable {
         return {
             ...textEdit,
             range: this.toIncomingRange(outgoingUri, textEdit.range)
-        }
+        };
     }
 
     public toIncomingFoldingRanges(outgoingUri: Uri, ranges: FoldingRange[] | null | undefined) {
@@ -542,12 +565,111 @@ export class NotebookConverter implements Disposable {
         return {
             parent: range.parent ? this.toIncomingSelectionRange(outgoingUri, range.parent) : undefined,
             range: this.toIncomingRange(outgoingUri, range.range)
+        };
+    }
+
+    public toIncomingCallHierarchyItems(
+        outgoingUri: Uri,
+        items: CallHierarchyItem | CallHierarchyItem[] | null | undefined
+    ) {
+        if (Array.isArray(items)) {
+            return items.map((r) => this.toIncomingCallHierarchyItem(outgoingUri, r));
+        } else if (items) {
+            return this.toIncomingCallHierarchyItem(outgoingUri, items);
+        }
+        return undefined;
+    }
+
+    public toIncomingCallHierarchyItem(outgoingUri: Uri, item: CallHierarchyItem) {
+        return {
+            ...item,
+            uri: this.toIncomingUri(outgoingUri, item.range),
+            range: this.toIncomingRange(outgoingUri, item.range),
+            selectionRange: this.toIncomingRange(outgoingUri, item.selectionRange)
+        };
+    }
+
+    public toIncomingCallHierarchyIncomingCallItems(
+        outgoingUri: Uri,
+        items: CallHierarchyIncomingCall[] | null | undefined
+    ) {
+        if (Array.isArray(items)) {
+            return items.map((r) => this.toIncomingCallHierarchyIncomingCallItem(outgoingUri, r));
+        }
+        return undefined;
+    }
+
+    public toIncomingCallHierarchyIncomingCallItem(
+        outgoingUri: Uri,
+        item: CallHierarchyIncomingCall
+    ): CallHierarchyIncomingCall {
+        return {
+            from: this.toIncomingCallHierarchyItem(outgoingUri, item.from),
+            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(outgoingUri, r))
+        };
+    }
+
+    public toIncomingCallHierarchyOutgoingCallItems(
+        outgoingUri: Uri,
+        items: CallHierarchyOutgoingCall[] | null | undefined
+    ) {
+        if (Array.isArray(items)) {
+            return items.map((r) => this.toIncomingCallHierarchyOutgoingCallItem(outgoingUri, r));
+        }
+        return undefined;
+    }
+
+    public toIncomingCallHierarchyOutgoingCallItem(
+        outgoingUri: Uri,
+        item: CallHierarchyOutgoingCall
+    ): CallHierarchyOutgoingCall {
+        return {
+            to: this.toIncomingCallHierarchyItem(outgoingUri, item.to),
+            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(outgoingUri, r))
+        };
+    }
+
+    public toIncomingSemanticEdits(outgoingUri: Uri, items: SemanticTokensEdits | SemanticTokens | null | undefined) {
+        if (items && 'edits' in items) {
+            return {
+                ...items,
+                edits: items.edits.map((e) => this.toIncomingSemanticEdit(outgoingUri, e))
+            };
+        } else if (items) {
+            return items;
+        }
+        return undefined;
+    }
+
+    public toIncomingSemanticEdit(outgoingUri: Uri, edit: SemanticTokensEdit) {
+        return {
+            ...edit,
+            start: this.toIncomingOffset(outgoingUri, edit.start)
+        };
+    }
+
+    public toIncomingSemanticTokens(_outgoingUri: Uri, tokens: SemanticTokens | null | undefined) {
+        if (tokens) {
+            // Going to assume tokens are not crossing cells because the initial request would 
+            // not have been across cells. So token encoding should be consistent within a
+            // cell. Might have to remove those that are outside of the initial cell?
+            return tokens;
+        }
+        return undefined;
+    }
+
+    public toIncomingLinkedEditingRanges(outgoingUri: Uri, items: LinkedEditingRanges | null | undefined) {
+        if (items) {
+            return {
+                ...items,
+                ranges: items.ranges.map((e) => this.toIncomingRange(outgoingUri, e))
+            };
         }
     }
 
     public remove(cell: TextDocument) {
         const key = NotebookConverter.getDocumentKey(cell.uri);
-        const wrapper = this.activeDocuments.get(key); 
+        const wrapper = this.activeDocuments.get(key);
         if (wrapper) {
             this.deleteWrapper(wrapper);
         }
