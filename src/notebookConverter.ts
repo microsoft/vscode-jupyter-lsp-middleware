@@ -29,13 +29,19 @@ import {
     Uri,
     WorkspaceEdit,
     NotebookDocument,
-    DocumentSelector
+    DocumentSelector,
+    Definition,
+    ColorInformation,
+    ColorPresentation,
+    FoldingRange,
+    SelectionRange
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
 import * as path from 'path';
 import { IConcatTextDocument } from './concatTextDocument';
 import { NotebookConcatDocument } from './notebookConcatDocument';
+import { start } from 'repl';
 
 /* Used by code actions. Disabled for now.
 function toRange(rangeLike: Range): Range {
@@ -253,11 +259,16 @@ export class NotebookConverter implements Disposable {
         return concat ? concat.positionAt(new Location(cell.uri, position)) : position;
     }
 
-    public toOutgoingRange(cell: TextDocument, cellRange: Range): Range {
+    public toOutgoingPositions(cell: TextDocument, positions: Position[]) {
+        return positions.map((p) => this.toOutgoingPosition(cell, p));
+    }
+
+    public toOutgoingRange(cell: TextDocument | Uri, cellRange: Range): Range {
         const concat = this.getConcatDocument(cell);
         if (concat) {
-            const startPos = concat.positionAt(new Location(cell.uri, cellRange.start));
-            const endPos = concat.positionAt(new Location(cell.uri, cellRange.end));
+            const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+            const startPos = concat.positionAt(new Location(uri, cellRange.start));
+            const endPos = concat.positionAt(new Location(uri, cellRange.end));
             return new Range(startPos, endPos);
         }
         return cellRange;
@@ -308,7 +319,7 @@ export class NotebookConverter implements Disposable {
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toIncomingLocations(location: Location | Location[] | LocationLink[] | null | undefined) {
+    public toIncomingLocations(location: Definition | Location | Location[] | LocationLink[] | null | undefined) {
         if (Array.isArray(location)) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return (<any>location).map(this.toIncomingLocationOrLink.bind(this));
@@ -469,6 +480,69 @@ export class NotebookConverter implements Disposable {
             });
         }
         return result || outgoingUri;
+    }
+
+    public toIncomingColorInformations(outgoingUri: Uri, colorInformations: ColorInformation[] | null | undefined) {
+        if (Array.isArray(colorInformations)) {
+            return colorInformations.map((c) => {
+                return {
+                    ...c,
+                    range: this.toIncomingRange(outgoingUri, c.range)
+                }
+            });
+        }
+    }
+
+    public toIncomingColorPresentations(outgoingUri: Uri, colorPresentations: ColorPresentation[] | null | undefined) {
+        if (Array.isArray(colorPresentations)) {
+            return colorPresentations.map((c) => {
+                return {
+                    ...c,
+                    additionalTextEdits: c.additionalTextEdits ? this.toIncomingTextEdits(outgoingUri, c.additionalTextEdits) : undefined,
+                    textEdit: c.textEdit ? this.toIncomingTextEdit(outgoingUri, c.textEdit) : undefined
+                }
+            });
+        }
+    }
+
+    public toIncomingTextEdits(outgoingUri: Uri, textEdits: TextEdit[] | null | undefined) {
+        if (Array.isArray(textEdits)) {
+            return textEdits.map((t) => this.toIncomingTextEdit(outgoingUri, t));
+        }
+    }
+
+    public toIncomingTextEdit(outgoingUri: Uri, textEdit: TextEdit) {
+        return {
+            ...textEdit,
+            range: this.toIncomingRange(outgoingUri, textEdit.range)
+        }
+    }
+
+    public toIncomingFoldingRanges(outgoingUri: Uri, ranges: FoldingRange[] | null | undefined) {
+        if (Array.isArray(ranges)) {
+            return ranges.map((r) => {
+                const start = this.toIncomingPosition(outgoingUri, new Position(r.start, 0));
+                const end = this.toIncomingPosition(outgoingUri, new Position(r.end, 0));
+                return {
+                    ...r,
+                    start: start.line,
+                    end: end.line
+                };
+            });
+        }
+    }
+
+    public toIncomingSelectionRanges(outgoingUri: Uri, ranges: SelectionRange[] | null | undefined) {
+        if (Array.isArray(ranges)) {
+            return ranges.map((r) => this.toIncomingSelectionRange(outgoingUri, r));
+        }
+    }
+
+    public toIncomingSelectionRange(outgoingUri: Uri, range: SelectionRange): SelectionRange {
+        return {
+            parent: range.parent ? this.toIncomingSelectionRange(outgoingUri, range.parent) : undefined,
+            range: this.toIncomingRange(outgoingUri, range.range)
+        }
     }
 
     public remove(cell: TextDocument) {
