@@ -99,4 +99,4 @@ jobs:
         uses: actions/upload-artifact@v2
         if: steps.test_id.outcome == 'failure' && failure()
         with:
-          path: './${{env.P}}'
+          path: './${{env.PYLANCE_LOG_PATH}}'
