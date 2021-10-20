@@ -41,7 +41,7 @@ import {
     SemanticTokens,
     SemanticTokensEdits,
     SemanticTokensEdit,
-    LinkedEditingRanges,
+    LinkedEditingRanges
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
@@ -274,9 +274,12 @@ export class NotebookConverter implements Disposable {
         if (concat) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
             const notebook = this.getNotebookDocument(cell);
-            const cellDocument = cell instanceof Uri ? notebook?.getCells().find(c => c.document.uri == uri)?.document : cell;
+            const cellDocument =
+                cell instanceof Uri ? notebook?.getCells().find((c) => c.document.uri == uri)?.document : cell;
             const start = cellRange ? cellRange.start : new Position(0, 0);
-            const end = cellRange ? cellRange.end : cellDocument?.lineAt(cellDocument.lineCount-1).range.end || new Position(0, 0);
+            const end = cellRange
+                ? cellRange.end
+                : cellDocument?.lineAt(cellDocument.lineCount - 1).range.end || new Position(0, 0);
             const startPos = concat.positionAt(new Location(uri, start));
             const endPos = concat.positionAt(new Location(uri, end));
             return new Range(startPos, endPos);
@@ -510,17 +513,20 @@ export class NotebookConverter implements Disposable {
         if (Array.isArray(colorInformations)) {
             // Need to filter out color information for other cells. Pylance
             // will return it for all.
-            return colorInformations.map((c) => {
-                return {
-                    color: c.color,
-                    location: this.toIncomingLocationFromRange(cellUri, c.range)
-                };
-            }).filter(cl => cl.location.uri.fragment == cellUri.fragment).map((cl) => {
-                return {
-                    color: cl.color,
-                    range: cl.location.range
-                };
-            });
+            return colorInformations
+                .map((c) => {
+                    return {
+                        color: c.color,
+                        location: this.toIncomingLocationFromRange(cellUri, c.range)
+                    };
+                })
+                .filter((cl) => cl.location.uri.fragment == cellUri.fragment)
+                .map((cl) => {
+                    return {
+                        color: cl.color,
+                        range: cl.location.range
+                    };
+                });
         }
     }
 
@@ -553,15 +559,20 @@ export class NotebookConverter implements Disposable {
 
     public toIncomingFoldingRanges(cellUri: Uri, ranges: FoldingRange[] | null | undefined) {
         if (Array.isArray(ranges)) {
-            return ranges.map((r) => {
-                const start = this.toIncomingPosition(cellUri, new Position(r.start, 0));
-                const end = this.toIncomingPosition(cellUri, new Position(r.end, 0));
-                return {
-                    ...r,
-                    start: start.line,
-                    end: end.line
-                };
-            });
+            return ranges
+                .map((r) =>
+                    this.toIncomingLocationFromRange(
+                        cellUri,
+                        new Range(new Position(r.start, 0), new Position(r.end, 0))
+                    )
+                )
+                .filter((l) => l.uri == cellUri)
+                .map((l) => {
+                    return {
+                        start: l.range.start.line,
+                        end: l.range.end.line
+                    };
+                });
         }
     }
 
@@ -668,16 +679,16 @@ export class NotebookConverter implements Disposable {
 
                 // Note to self: If tokenization stops working, might be pylance's fault. It does handle
                 // range requests but was returning stuff outside the range.
-                
+
                 // Rewrite the first item by offsetting from the start of the cell. All other entries
                 // are offset from this one, so they don't need to be rewritten
-                tokens.data.set([tokens.data[0] - startOfCell.line], 0)
+                tokens.data.set([tokens.data[0] - startOfCell.line], 0);
 
                 // Data array should have been updated.
                 return tokens;
             }
         }
-        return tokens;
+        return undefined;
     }
 
     public toIncomingLinkedEditingRanges(cellUri: Uri, items: LinkedEditingRanges | null | undefined) {

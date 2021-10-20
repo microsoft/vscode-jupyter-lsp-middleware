@@ -110,7 +110,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         cellSelector: string | DocumentSelector,
         notebookFileRegex: RegExp,
         private readonly pythonPath: string,
-        private readonly shouldProvideIntellisense: (uri: Uri) => boolean
+        private readonly isDocumentAllowed: (uri: Uri) => boolean
     ) {
         this.converter = new NotebookConverter(notebookApi, cellSelector, notebookFileRegex);
         this.didChangeCellsDisposable = this.converter.onDidChangeCells(this.onDidChangeCells.bind(this));
@@ -210,7 +210,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.initializeTracing();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri) && this.shouldProvideIntellisense(document.uri)) {
+        if (isNotebookCell(document.uri) && this.isDocumentAllowed(document.uri)) {
             if (!this.converter.hasFiredOpen(document)) {
                 this.converter.firedOpen(document);
                 const newDoc = this.converter.toOutgoingDocument(document);
@@ -691,11 +691,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     public provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken, _next: DocumentSemanticsTokensSignature): ProviderResult<SemanticTokens> {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
-            // Document may not have opened yet, mark as open
-            if (document.notebook) {
-                this.startWatching(document.notebook)
-            }
-            
             const newDoc = this.converter.toOutgoingDocument(document);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
@@ -772,5 +767,10 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
                 this.traceDisposable = client.onNotification('window/logMessage', this.traceInfo);
             }
         }
+    }
+
+    private shouldProvideIntellisense(uri: Uri): boolean {
+        // Make sure document is allowed
+        return this.isDocumentAllowed(uri);
     }
 }
