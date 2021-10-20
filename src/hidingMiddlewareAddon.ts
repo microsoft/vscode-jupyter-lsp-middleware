@@ -14,7 +14,6 @@ import {
     Command,
     CompletionContext,
     CompletionItem,
-    Declaration,
     Declaration as VDeclaration,
     Definition,
     DefinitionLink,
@@ -62,12 +61,10 @@ import {
     ProvideRenameEditsSignature,
     ProvideSignatureHelpSignature,
     ResolveCompletionItemSignature,
-    SemanticTokensRangeParams,
-    SemanticTokensRangeRequest
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isNotebookCell, isThenable } from './common/utils';
+import { isNotebookCell } from './common/utils';
 import {
     PrepareCallHierarchySignature,
     CallHierarchyIncomingCallsSignature,
