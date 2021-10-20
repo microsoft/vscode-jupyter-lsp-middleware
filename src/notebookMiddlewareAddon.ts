@@ -85,11 +85,22 @@ import { isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
-import { ProvideDocumentColorsSignature, ProvideColorPresentationSignature } from 'vscode-languageclient/lib/common/colorProvider';
+import {
+    ProvideDocumentColorsSignature,
+    ProvideColorPresentationSignature
+} from 'vscode-languageclient/lib/common/colorProvider';
 import { ProvideFoldingRangeSignature } from 'vscode-languageclient/lib/common/foldingRange';
 import { ProvideSelectionRangeSignature } from 'vscode-languageclient/lib/common/selectionRange';
-import { PrepareCallHierarchySignature, CallHierarchyIncomingCallsSignature, CallHierarchyOutgoingCallsSignature } from 'vscode-languageclient/lib/common/callHierarchy';
-import { DocumentRangeSemanticTokensSignature, DocumentSemanticsTokensEditsSignature, DocumentSemanticsTokensSignature } from 'vscode-languageclient/lib/common/semanticTokens';
+import {
+    PrepareCallHierarchySignature,
+    CallHierarchyIncomingCallsSignature,
+    CallHierarchyOutgoingCallsSignature
+} from 'vscode-languageclient/lib/common/callHierarchy';
+import {
+    DocumentRangeSemanticTokensSignature,
+    DocumentSemanticsTokensEditsSignature,
+    DocumentSemanticsTokensSignature
+} from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 
 /**
@@ -545,14 +556,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
         const incomingUri = this.converter.toIncomingUri(uri);
-        if (incomingUri && incomingUri != uri) {
-            if (this.shouldProvideIntellisense(incomingUri)) {
-                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-                // Otherwise old messages for cells that didn't change this time won't go away.
-                const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
-                [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
-            }
+        if (incomingUri && incomingUri != uri && this.shouldProvideIntellisense(incomingUri)) {
+            // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+            // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+            // Otherwise old messages for cells that didn't change this time won't go away.
+            const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
+            [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
         } else {
             // Swallow all other diagnostics
             next(uri, []);
@@ -593,7 +602,11 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public provideDocumentColors(document: TextDocument, token: CancellationToken, next: ProvideDocumentColorsSignature): ProviderResult<ColorInformation[]> {
+    public provideDocumentColors(
+        document: TextDocument,
+        token: CancellationToken,
+        next: ProvideDocumentColorsSignature
+    ): ProviderResult<ColorInformation[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, token);
@@ -603,22 +616,34 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             return this.converter.toIncomingColorInformations(document.uri, result);
         }
     }
-    public provideColorPresentations(color: Color, context: {
-        document: TextDocument;
-        range: Range;
-    }, token: CancellationToken, next: ProvideColorPresentationSignature): ProviderResult<ColorPresentation[]> {
+    public provideColorPresentations(
+        color: Color,
+        context: {
+            document: TextDocument;
+            range: Range;
+        },
+        token: CancellationToken,
+        next: ProvideColorPresentationSignature
+    ): ProviderResult<ColorPresentation[]> {
         if (this.shouldProvideIntellisense(context.document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(context.document);
             const newRange = this.converter.toOutgoingRange(context.document, context.range);
             const result = next(color, { document: newDoc, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingColorPresentations.bind(this.converter, context.document.uri));
+                return result.then(
+                    this.converter.toIncomingColorPresentations.bind(this.converter, context.document.uri)
+                );
             }
             return this.converter.toIncomingColorPresentations(context.document.uri, result);
         }
     }
 
-    public provideFoldingRanges(document: TextDocument, context: FoldingContext, token: CancellationToken, next: ProvideFoldingRangeSignature): ProviderResult<FoldingRange[]> {
+    public provideFoldingRanges(
+        document: TextDocument,
+        context: FoldingContext,
+        token: CancellationToken,
+        next: ProvideFoldingRangeSignature
+    ): ProviderResult<FoldingRange[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, context, token);
@@ -629,7 +654,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public provideDeclaration(document: TextDocument, position: Position, token: CancellationToken, next: ProvideDeclarationSignature) : ProviderResult<Declaration> {
+    public provideDeclaration(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideDeclarationSignature
+    ): ProviderResult<Declaration> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPos = this.converter.toOutgoingPosition(document, position);
@@ -641,7 +671,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public provideSelectionRanges(document: TextDocument, positions: Position[], token: CancellationToken, next: ProvideSelectionRangeSignature): ProviderResult<SelectionRange[]> {
+    public provideSelectionRanges(
+        document: TextDocument,
+        positions: Position[],
+        token: CancellationToken,
+        next: ProvideSelectionRangeSignature
+    ): ProviderResult<SelectionRange[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPositions = this.converter.toOutgoingPositions(document, positions);
@@ -653,7 +688,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public prepareCallHierarchy(document: TextDocument, positions: Position, token: CancellationToken, next: PrepareCallHierarchySignature): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
+    public prepareCallHierarchy(
+        document: TextDocument,
+        positions: Position,
+        token: CancellationToken,
+        next: PrepareCallHierarchySignature
+    ): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPositions = this.converter.toOutgoingPosition(document, positions);
@@ -663,32 +703,47 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingCallHierarchyItems(document.uri, result);
         }
-
     }
-    public provideCallHierarchyIncomingCalls(item: CallHierarchyItem, token: CancellationToken, next: CallHierarchyIncomingCallsSignature): ProviderResult<CallHierarchyIncomingCall[]> {
+    public provideCallHierarchyIncomingCalls(
+        item: CallHierarchyItem,
+        token: CancellationToken,
+        next: CallHierarchyIncomingCallsSignature
+    ): ProviderResult<CallHierarchyIncomingCall[]> {
         if (this.shouldProvideIntellisense(item.uri)) {
             const newUri = this.converter.toOutgoingUri(item.uri);
             const newRange = this.converter.toOutgoingRange(item.uri, item.range);
-            const result = next({...item, uri: newUri, range: newRange }, token);
+            const result = next({ ...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, item.uri));
+                return result.then(
+                    this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, item.uri)
+                );
             }
             return this.converter.toIncomingCallHierarchyIncomingCallItems(item.uri, result);
         }
     }
-    public provideCallHierarchyOutgoingCalls(item: CallHierarchyItem, token: CancellationToken, next: CallHierarchyOutgoingCallsSignature): ProviderResult<CallHierarchyOutgoingCall[]> {
+    public provideCallHierarchyOutgoingCalls(
+        item: CallHierarchyItem,
+        token: CancellationToken,
+        next: CallHierarchyOutgoingCallsSignature
+    ): ProviderResult<CallHierarchyOutgoingCall[]> {
         if (this.shouldProvideIntellisense(item.uri)) {
             const newUri = this.converter.toOutgoingUri(item.uri);
             const newRange = this.converter.toOutgoingRange(item.uri, item.range);
-            const result = next({...item, uri: newUri, range: newRange }, token);
+            const result = next({ ...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, item.uri));
+                return result.then(
+                    this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, item.uri)
+                );
             }
             return this.converter.toIncomingCallHierarchyOutgoingCallItems(item.uri, result);
         }
     }
 
-    public provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken, _next: DocumentSemanticsTokensSignature): ProviderResult<SemanticTokens> {
+    public provideDocumentSemanticTokens(
+        document: TextDocument,
+        token: CancellationToken,
+        _next: DocumentSemanticsTokensSignature
+    ): ProviderResult<SemanticTokens> {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
             const newDoc = this.converter.toOutgoingDocument(document);
@@ -699,19 +754,24 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const params: SemanticTokensRangeParams = {
                 textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
                 range: client.code2ProtocolConverter.asRange(newRange)
-            }
+            };
 
             // Make the request directly (dont use the 'next' value)
             const result = client.sendRequest(SemanticTokensRangeRequest.type, params, token);
 
             // Then convert from protocol back to vscode types
-            return result.then(r => {
+            return result.then((r) => {
                 const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
                 return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
-            })
+            });
         }
     }
-    public provideDocumentSemanticTokensEdits(document: TextDocument, previousResultId: string, token: CancellationToken, next: DocumentSemanticsTokensEditsSignature): ProviderResult<SemanticTokensEdits | SemanticTokens> {
+    public provideDocumentSemanticTokensEdits(
+        document: TextDocument,
+        previousResultId: string,
+        token: CancellationToken,
+        next: DocumentSemanticsTokensEditsSignature
+    ): ProviderResult<SemanticTokensEdits | SemanticTokens> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, previousResultId, token);
@@ -720,9 +780,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingSemanticEdits(document.uri, result);
         }
-
     }
-    public provideDocumentRangeSemanticTokens(document: TextDocument, range: Range, token: CancellationToken, next: DocumentRangeSemanticTokensSignature): ProviderResult<SemanticTokens> {
+    public provideDocumentRangeSemanticTokens(
+        document: TextDocument,
+        range: Range,
+        token: CancellationToken,
+        next: DocumentRangeSemanticTokensSignature
+    ): ProviderResult<SemanticTokens> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newRange = this.converter.toOutgoingRange(document, range);
@@ -734,7 +798,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public provideLinkedEditingRange(document: TextDocument, position: Position, token: CancellationToken, next: ProvideLinkedEditingRangeSignature): ProviderResult<LinkedEditingRanges> {
+    public provideLinkedEditingRange(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideLinkedEditingRangeSignature
+    ): ProviderResult<LinkedEditingRanges> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toOutgoingDocument(document);
             const newPosition = this.converter.toOutgoingPosition(document, position);
@@ -744,9 +813,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
             return this.converter.toIncomingLinkedEditingRanges(document.uri, result);
         }
-
     }
-
 
     private onDidChangeCells(e: TextDocumentChangeEvent) {
         // This event fires when the user moves, deletes, or inserts cells into the concatenated document
