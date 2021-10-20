@@ -115,7 +115,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private traceDisposable: Disposable | undefined;
 
     constructor(
-        notebookApi: IVSCodeNotebook,
+        private readonly notebookApi: IVSCodeNotebook,
         private readonly getClient: () => LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
         cellSelector: string | DocumentSelector,
@@ -221,7 +221,11 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.initializeTracing();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri) && this.isDocumentAllowed(document.uri)) {
+        if (
+            isNotebookCell(document.uri) &&
+            this.isDocumentAllowed(document.uri) &&
+            this.notebookApi.notebookDocuments.find((n) => n.uri.fsPath === document.uri.fsPath)
+        ) {
             if (!this.converter.hasFiredOpen(document)) {
                 this.converter.firedOpen(document);
                 const newDoc = this.converter.toOutgoingDocument(document);
