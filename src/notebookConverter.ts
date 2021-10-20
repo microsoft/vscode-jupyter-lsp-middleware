@@ -506,49 +506,56 @@ export class NotebookConverter implements Disposable {
         return result || outgoingUri;
     }
 
-    public toIncomingColorInformations(outgoingUri: Uri, colorInformations: ColorInformation[] | null | undefined) {
+    public toIncomingColorInformations(cellUri: Uri, colorInformations: ColorInformation[] | null | undefined) {
         if (Array.isArray(colorInformations)) {
+            // Need to filter out color information for other cells. Pylance
+            // will return it for all.
             return colorInformations.map((c) => {
                 return {
-                    ...c,
-                    range: this.toIncomingRange(outgoingUri, c.range)
+                    color: c.color,
+                    location: this.toIncomingLocationFromRange(cellUri, c.range)
+                };
+            }).filter(cl => cl.location.uri.fragment == cellUri.fragment).map((cl) => {
+                return {
+                    color: cl.color,
+                    range: cl.location.range
                 };
             });
         }
     }
 
-    public toIncomingColorPresentations(outgoingUri: Uri, colorPresentations: ColorPresentation[] | null | undefined) {
+    public toIncomingColorPresentations(cellUri: Uri, colorPresentations: ColorPresentation[] | null | undefined) {
         if (Array.isArray(colorPresentations)) {
             return colorPresentations.map((c) => {
                 return {
                     ...c,
                     additionalTextEdits: c.additionalTextEdits
-                        ? this.toIncomingTextEdits(outgoingUri, c.additionalTextEdits)
+                        ? this.toIncomingTextEdits(cellUri, c.additionalTextEdits)
                         : undefined,
-                    textEdit: c.textEdit ? this.toIncomingTextEdit(outgoingUri, c.textEdit) : undefined
+                    textEdit: c.textEdit ? this.toIncomingTextEdit(cellUri, c.textEdit) : undefined
                 };
             });
         }
     }
 
-    public toIncomingTextEdits(outgoingUri: Uri, textEdits: TextEdit[] | null | undefined) {
+    public toIncomingTextEdits(cellUri: Uri, textEdits: TextEdit[] | null | undefined) {
         if (Array.isArray(textEdits)) {
-            return textEdits.map((t) => this.toIncomingTextEdit(outgoingUri, t));
+            return textEdits.map((t) => this.toIncomingTextEdit(cellUri, t));
         }
     }
 
-    public toIncomingTextEdit(outgoingUri: Uri, textEdit: TextEdit) {
+    public toIncomingTextEdit(cellUri: Uri, textEdit: TextEdit) {
         return {
             ...textEdit,
-            range: this.toIncomingRange(outgoingUri, textEdit.range)
+            range: this.toIncomingRange(cellUri, textEdit.range)
         };
     }
 
-    public toIncomingFoldingRanges(outgoingUri: Uri, ranges: FoldingRange[] | null | undefined) {
+    public toIncomingFoldingRanges(cellUri: Uri, ranges: FoldingRange[] | null | undefined) {
         if (Array.isArray(ranges)) {
             return ranges.map((r) => {
-                const start = this.toIncomingPosition(outgoingUri, new Position(r.start, 0));
-                const end = this.toIncomingPosition(outgoingUri, new Position(r.end, 0));
+                const start = this.toIncomingPosition(cellUri, new Position(r.start, 0));
+                const end = this.toIncomingPosition(cellUri, new Position(r.end, 0));
                 return {
                     ...r,
                     start: start.line,
@@ -558,85 +565,85 @@ export class NotebookConverter implements Disposable {
         }
     }
 
-    public toIncomingSelectionRanges(outgoingUri: Uri, ranges: SelectionRange[] | null | undefined) {
+    public toIncomingSelectionRanges(cellUri: Uri, ranges: SelectionRange[] | null | undefined) {
         if (Array.isArray(ranges)) {
-            return ranges.map((r) => this.toIncomingSelectionRange(outgoingUri, r));
+            return ranges.map((r) => this.toIncomingSelectionRange(cellUri, r));
         }
     }
 
-    public toIncomingSelectionRange(outgoingUri: Uri, range: SelectionRange): SelectionRange {
+    public toIncomingSelectionRange(cellUri: Uri, range: SelectionRange): SelectionRange {
         return {
-            parent: range.parent ? this.toIncomingSelectionRange(outgoingUri, range.parent) : undefined,
-            range: this.toIncomingRange(outgoingUri, range.range)
+            parent: range.parent ? this.toIncomingSelectionRange(cellUri, range.parent) : undefined,
+            range: this.toIncomingRange(cellUri, range.range)
         };
     }
 
     public toIncomingCallHierarchyItems(
-        outgoingUri: Uri,
+        cellUri: Uri,
         items: CallHierarchyItem | CallHierarchyItem[] | null | undefined
     ) {
         if (Array.isArray(items)) {
-            return items.map((r) => this.toIncomingCallHierarchyItem(outgoingUri, r));
+            return items.map((r) => this.toIncomingCallHierarchyItem(cellUri, r));
         } else if (items) {
-            return this.toIncomingCallHierarchyItem(outgoingUri, items);
+            return this.toIncomingCallHierarchyItem(cellUri, items);
         }
         return undefined;
     }
 
-    public toIncomingCallHierarchyItem(outgoingUri: Uri, item: CallHierarchyItem) {
+    public toIncomingCallHierarchyItem(cellUri: Uri, item: CallHierarchyItem) {
         return {
             ...item,
-            uri: this.toIncomingUri(outgoingUri, item.range),
-            range: this.toIncomingRange(outgoingUri, item.range),
-            selectionRange: this.toIncomingRange(outgoingUri, item.selectionRange)
+            uri: cellUri,
+            range: this.toIncomingRange(cellUri, item.range),
+            selectionRange: this.toIncomingRange(cellUri, item.selectionRange)
         };
     }
 
     public toIncomingCallHierarchyIncomingCallItems(
-        outgoingUri: Uri,
+        cellUri: Uri,
         items: CallHierarchyIncomingCall[] | null | undefined
     ) {
         if (Array.isArray(items)) {
-            return items.map((r) => this.toIncomingCallHierarchyIncomingCallItem(outgoingUri, r));
+            return items.map((r) => this.toIncomingCallHierarchyIncomingCallItem(cellUri, r));
         }
         return undefined;
     }
 
     public toIncomingCallHierarchyIncomingCallItem(
-        outgoingUri: Uri,
+        cellUri: Uri,
         item: CallHierarchyIncomingCall
     ): CallHierarchyIncomingCall {
         return {
-            from: this.toIncomingCallHierarchyItem(outgoingUri, item.from),
-            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(outgoingUri, r))
+            from: this.toIncomingCallHierarchyItem(cellUri, item.from),
+            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(cellUri, r))
         };
     }
 
     public toIncomingCallHierarchyOutgoingCallItems(
-        outgoingUri: Uri,
+        cellUri: Uri,
         items: CallHierarchyOutgoingCall[] | null | undefined
     ) {
         if (Array.isArray(items)) {
-            return items.map((r) => this.toIncomingCallHierarchyOutgoingCallItem(outgoingUri, r));
+            return items.map((r) => this.toIncomingCallHierarchyOutgoingCallItem(cellUri, r));
         }
         return undefined;
     }
 
     public toIncomingCallHierarchyOutgoingCallItem(
-        outgoingUri: Uri,
+        cellUri: Uri,
         item: CallHierarchyOutgoingCall
     ): CallHierarchyOutgoingCall {
         return {
-            to: this.toIncomingCallHierarchyItem(outgoingUri, item.to),
-            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(outgoingUri, r))
+            to: this.toIncomingCallHierarchyItem(cellUri, item.to),
+            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(cellUri, r))
         };
     }
 
-    public toIncomingSemanticEdits(outgoingUri: Uri, items: SemanticTokensEdits | SemanticTokens | null | undefined) {
+    public toIncomingSemanticEdits(cellUri: Uri, items: SemanticTokensEdits | SemanticTokens | null | undefined) {
         if (items && 'edits' in items) {
             return {
                 ...items,
-                edits: items.edits.map((e) => this.toIncomingSemanticEdit(outgoingUri, e))
+                edits: items.edits.map((e) => this.toIncomingSemanticEdit(cellUri, e))
             };
         } else if (items) {
             return items;
@@ -644,28 +651,40 @@ export class NotebookConverter implements Disposable {
         return undefined;
     }
 
-    public toIncomingSemanticEdit(outgoingUri: Uri, edit: SemanticTokensEdit) {
+    public toIncomingSemanticEdit(cellUri: Uri, edit: SemanticTokensEdit) {
         return {
             ...edit,
-            start: this.toIncomingOffset(outgoingUri, edit.start)
+            start: this.toIncomingOffset(cellUri, edit.start)
         };
     }
 
-    public toIncomingSemanticTokens(_outgoingUri: Uri, tokens: SemanticTokens | null | undefined) {
+    public toIncomingSemanticTokens(cellUri: Uri, tokens: SemanticTokens | null | undefined) {
         if (tokens) {
-            // Going to assume tokens are not crossing cells because the initial request would 
-            // not have been across cells. So token encoding should be consistent within a
-            // cell. Might have to remove those that are outside of the initial cell?
-            return tokens;
+            const wrapper = this.getTextDocumentWrapper(cellUri);
+            // First line offset is the wrong number. It is from the beginning of the concat doc and not the
+            // cell.
+            if (wrapper && wrapper.concatDocument && tokens.data.length > 0) {
+                const startOfCell = wrapper.concatDocument.positionAt(new Location(cellUri, new Position(0, 0)));
+
+                // Note to self: If tokenization stops working, might be pylance's fault. It does handle
+                // range requests but was returning stuff outside the range.
+                
+                // Rewrite the first item by offsetting from the start of the cell. All other entries
+                // are offset from this one, so they don't need to be rewritten
+                tokens.data.set([tokens.data[0] - startOfCell.line], 0)
+
+                // Data array should have been updated.
+                return tokens;
+            }
         }
-        return undefined;
+        return tokens;
     }
 
-    public toIncomingLinkedEditingRanges(outgoingUri: Uri, items: LinkedEditingRanges | null | undefined) {
+    public toIncomingLinkedEditingRanges(cellUri: Uri, items: LinkedEditingRanges | null | undefined) {
         if (items) {
             return {
                 ...items,
-                ranges: items.ranges.map((e) => this.toIncomingRange(outgoingUri, e))
+                ranges: items.ranges.map((e) => this.toIncomingRange(cellUri, e))
             };
         }
     }

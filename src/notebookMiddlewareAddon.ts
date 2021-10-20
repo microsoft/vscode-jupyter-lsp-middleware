@@ -598,9 +598,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingColorInformations.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingColorInformations.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingColorInformations(newDoc.uri, result);
+            return this.converter.toIncomingColorInformations(document.uri, result);
         }
     }
     public provideColorPresentations(color: Color, context: {
@@ -612,9 +612,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(context.document, context.range);
             const result = next(color, { document: newDoc, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingColorPresentations.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingColorPresentations.bind(this.converter, context.document.uri));
             }
-            return this.converter.toIncomingColorPresentations(newDoc.uri, result);
+            return this.converter.toIncomingColorPresentations(context.document.uri, result);
         }
     }
 
@@ -623,9 +623,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, context, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingFoldingRanges.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingFoldingRanges.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingFoldingRanges(newDoc.uri, result);
+            return this.converter.toIncomingFoldingRanges(document.uri, result);
         }
     }
 
@@ -647,9 +647,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPositions = this.converter.toOutgoingPositions(document, positions);
             const result = next(newDoc, newPositions, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSelectionRanges.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingSelectionRanges.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingSelectionRanges(newDoc.uri, result);
+            return this.converter.toIncomingSelectionRanges(document.uri, result);
         }
     }
 
@@ -659,9 +659,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPositions = this.converter.toOutgoingPosition(document, positions);
             const result = next(newDoc, newPositions, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyItems.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingCallHierarchyItems.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingCallHierarchyItems(newDoc.uri, result);
+            return this.converter.toIncomingCallHierarchyItems(document.uri, result);
         }
 
     }
@@ -671,9 +671,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(item.uri, item.range);
             const result = next({...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, newUri));
+                return result.then(this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, item.uri));
             }
-            return this.converter.toIncomingCallHierarchyIncomingCallItems(newUri, result);
+            return this.converter.toIncomingCallHierarchyIncomingCallItems(item.uri, result);
         }
     }
     public provideCallHierarchyOutgoingCalls(item: CallHierarchyItem, token: CancellationToken, next: CallHierarchyOutgoingCallsSignature): ProviderResult<CallHierarchyOutgoingCall[]> {
@@ -682,15 +682,20 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(item.uri, item.range);
             const result = next({...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, newUri));
+                return result.then(this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, item.uri));
             }
-            return this.converter.toIncomingCallHierarchyOutgoingCallItems(newUri, result);
+            return this.converter.toIncomingCallHierarchyOutgoingCallItems(item.uri, result);
         }
     }
 
     public provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken, _next: DocumentSemanticsTokensSignature): ProviderResult<SemanticTokens> {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
+            // Document may not have opened yet, mark as open
+            if (document.notebook) {
+                this.startWatching(document.notebook)
+            }
+            
             const newDoc = this.converter.toOutgoingDocument(document);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
@@ -707,7 +712,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             // Then convert from protocol back to vscode types
             return result.then(r => {
                 const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
-                return this.converter.toIncomingSemanticTokens(newDoc.uri, vscodeTokens);
+                return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
             })
         }
     }
@@ -716,9 +721,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newDoc = this.converter.toOutgoingDocument(document);
             const result = next(newDoc, previousResultId, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingSemanticEdits(newDoc.uri, result);
+            return this.converter.toIncomingSemanticEdits(document.uri, result);
         }
 
     }
@@ -728,9 +733,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newRange = this.converter.toOutgoingRange(document, range);
             const result = next(newDoc, newRange, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSemanticTokens.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingSemanticTokens.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingSemanticTokens(newDoc.uri, result);
+            return this.converter.toIncomingSemanticTokens(document.uri, result);
         }
     }
 
@@ -740,9 +745,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newPosition = this.converter.toOutgoingPosition(document, position);
             const result = next(newDoc, newPosition, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter, newDoc.uri));
+                return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingLinkedEditingRanges(newDoc.uri, result);
+            return this.converter.toIncomingLinkedEditingRanges(document.uri, result);
         }
 
     }
