@@ -236,6 +236,6 @@ suite('Notebook tests', function () {
         const cell3 = await insertCodeCell('import system\nprint(sys.executable)', { index: 1 });
         await sleep(3000); // Give some time for diag to show up
         const diagnostics = languages.getDiagnostics(cell3.document.uri);
-        assert.isEmpty(diagnostics, `No diagnostics should be found in the third cell {JSON.stringify(diagnostics)}`);
+        assert.isEmpty(diagnostics, `No diagnostics should be found in the third cell ${JSON.stringify(diagnostics)}`);
     });
 });
