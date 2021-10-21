@@ -1,14 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 import {
+    CallHierarchyIncomingCall,
+    CallHierarchyItem,
+    CallHierarchyOutgoingCall,
     CancellationToken,
     CodeAction,
     CodeActionContext,
     CodeLens,
+    Color,
+    ColorInformation,
+    ColorPresentation,
     Command,
     CompletionContext,
     CompletionItem,
-    Declaration as VDeclaration,
+    Declaration,
     Definition,
     DefinitionLink,
     Diagnostic,
@@ -17,13 +23,19 @@ import {
     DocumentLink,
     DocumentSelector,
     DocumentSymbol,
+    FoldingContext,
+    FoldingRange,
     FormattingOptions,
+    LinkedEditingRanges,
     Location,
     NotebookDocument,
     Position,
     Position as VPosition,
     ProviderResult,
     Range,
+    SelectionRange,
+    SemanticTokens,
+    SemanticTokensEdits,
     SignatureHelp,
     SignatureHelpContext,
     SymbolInformation,
@@ -62,13 +74,34 @@ import {
     ResolveCodeLensSignature,
     ResolveCompletionItemSignature,
     ResolveDocumentLinkSignature,
-    ResponseError
+    ResponseError,
+    SemanticTokensRangeParams,
+    SemanticTokensRangeRequest
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { IVSCodeNotebook } from './common/types';
 import { isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
+import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
+import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
+import {
+    ProvideDocumentColorsSignature,
+    ProvideColorPresentationSignature
+} from 'vscode-languageclient/lib/common/colorProvider';
+import { ProvideFoldingRangeSignature } from 'vscode-languageclient/lib/common/foldingRange';
+import { ProvideSelectionRangeSignature } from 'vscode-languageclient/lib/common/selectionRange';
+import {
+    PrepareCallHierarchySignature,
+    CallHierarchyIncomingCallsSignature,
+    CallHierarchyOutgoingCallsSignature
+} from 'vscode-languageclient/lib/common/callHierarchy';
+import {
+    DocumentRangeSemanticTokensSignature,
+    DocumentSemanticsTokensEditsSignature,
+    DocumentSemanticsTokensSignature
+} from 'vscode-languageclient/lib/common/semanticTokens';
+import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -82,13 +115,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private traceDisposable: Disposable | undefined;
 
     constructor(
-        notebookApi: IVSCodeNotebook,
+        private readonly notebookApi: IVSCodeNotebook,
         private readonly getClient: () => LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
         cellSelector: string | DocumentSelector,
         notebookFileRegex: RegExp,
         private readonly pythonPath: string,
-        private readonly shouldProvideIntellisense: (uri: Uri) => boolean
+        private readonly isDocumentAllowed: (uri: Uri) => boolean
     ) {
         this.converter = new NotebookConverter(notebookApi, cellSelector, notebookFileRegex);
         this.didChangeCellsDisposable = this.converter.onDidChangeCells(this.onDidChangeCells.bind(this));
@@ -145,9 +178,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
             // Set the diagnostics to nothing for all the cells
             if (client.diagnostics) {
-                notebook.getCells().forEach(c => {
+                notebook.getCells().forEach((c) => {
                     client.diagnostics?.set(c.document.uri, []);
-                })
+                });
             }
 
             // Remove from tracking by the converter
@@ -164,7 +197,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             this.didOpen(notebook.cellAt(0).document, (ev) => {
                 const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
                 client.sendNotification(DidOpenTextDocumentNotification.type, params);
-            })
+            });
         }
     }
 
@@ -188,7 +221,11 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.initializeTracing();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri) && this.shouldProvideIntellisense(document.uri)) {
+        if (
+            isNotebookCell(document.uri) &&
+            this.isDocumentAllowed(document.uri) &&
+            this.notebookApi.notebookDocuments.find((n) => n.uri.fsPath === document.uri.fsPath)
+        ) {
             if (!this.converter.hasFiredOpen(document)) {
                 this.converter.firedOpen(document);
                 const newDoc = this.converter.toOutgoingDocument(document);
@@ -521,32 +558,264 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         return next(link, token);
     }
 
-    // eslint-disable-next-line class-methods-use-this
-    public provideDeclaration(
-        document: TextDocument,
-        _position: VPosition,
-        _token: CancellationToken,
-        _next: ProvideDeclarationSignature
-    ): ProviderResult<VDeclaration> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            this.traceInfo('provideDeclaration not currently supported for notebooks');
-            return undefined;
-        }
-    }
-
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
         const incomingUri = this.converter.toIncomingUri(uri);
-        if (incomingUri && incomingUri != uri) {
-            if (this.shouldProvideIntellisense(incomingUri)) {
-                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-                // Otherwise old messages for cells that didn't change this time won't go away.
-                const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
-                [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
-            } 
+        if (incomingUri && incomingUri != uri && this.shouldProvideIntellisense(incomingUri)) {
+            // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+            // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+            // Otherwise old messages for cells that didn't change this time won't go away.
+            const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
+            [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
         } else {
             // Swallow all other diagnostics
             next(uri, []);
+        }
+    }
+
+    public provideTypeDefinition(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideTypeDefinitionSignature
+    ) {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newPos = this.converter.toOutgoingPosition(document, position);
+            const result = next(newDoc, newPos, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+            }
+            return this.converter.toIncomingLocations(result);
+        }
+    }
+
+    public provideImplementation(
+        document: TextDocument,
+        position: VPosition,
+        token: CancellationToken,
+        next: ProvideImplementationSignature
+    ): ProviderResult<Definition | DefinitionLink[]> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newPos = this.converter.toOutgoingPosition(document, position);
+            const result = next(newDoc, newPos, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+            }
+            return this.converter.toIncomingLocations(result);
+        }
+    }
+
+    public provideDocumentColors(
+        document: TextDocument,
+        token: CancellationToken,
+        next: ProvideDocumentColorsSignature
+    ): ProviderResult<ColorInformation[]> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const result = next(newDoc, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingColorInformations.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingColorInformations(document.uri, result);
+        }
+    }
+    public provideColorPresentations(
+        color: Color,
+        context: {
+            document: TextDocument;
+            range: Range;
+        },
+        token: CancellationToken,
+        next: ProvideColorPresentationSignature
+    ): ProviderResult<ColorPresentation[]> {
+        if (this.shouldProvideIntellisense(context.document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(context.document);
+            const newRange = this.converter.toOutgoingRange(context.document, context.range);
+            const result = next(color, { document: newDoc, range: newRange }, token);
+            if (isThenable(result)) {
+                return result.then(
+                    this.converter.toIncomingColorPresentations.bind(this.converter, context.document.uri)
+                );
+            }
+            return this.converter.toIncomingColorPresentations(context.document.uri, result);
+        }
+    }
+
+    public provideFoldingRanges(
+        document: TextDocument,
+        context: FoldingContext,
+        token: CancellationToken,
+        next: ProvideFoldingRangeSignature
+    ): ProviderResult<FoldingRange[]> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const result = next(newDoc, context, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingFoldingRanges.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingFoldingRanges(document.uri, result);
+        }
+    }
+
+    public provideDeclaration(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideDeclarationSignature
+    ): ProviderResult<Declaration> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newPos = this.converter.toOutgoingPosition(document, position);
+            const result = next(newDoc, newPos, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+            }
+            return this.converter.toIncomingLocations(result);
+        }
+    }
+
+    public provideSelectionRanges(
+        document: TextDocument,
+        positions: Position[],
+        token: CancellationToken,
+        next: ProvideSelectionRangeSignature
+    ): ProviderResult<SelectionRange[]> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newPositions = this.converter.toOutgoingPositions(document, positions);
+            const result = next(newDoc, newPositions, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingSelectionRanges.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingSelectionRanges(document.uri, result);
+        }
+    }
+
+    public prepareCallHierarchy(
+        document: TextDocument,
+        positions: Position,
+        token: CancellationToken,
+        next: PrepareCallHierarchySignature
+    ): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newPositions = this.converter.toOutgoingPosition(document, positions);
+            const result = next(newDoc, newPositions, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingCallHierarchyItems.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingCallHierarchyItems(document.uri, result);
+        }
+    }
+    public provideCallHierarchyIncomingCalls(
+        item: CallHierarchyItem,
+        token: CancellationToken,
+        next: CallHierarchyIncomingCallsSignature
+    ): ProviderResult<CallHierarchyIncomingCall[]> {
+        if (this.shouldProvideIntellisense(item.uri)) {
+            const newUri = this.converter.toOutgoingUri(item.uri);
+            const newRange = this.converter.toOutgoingRange(item.uri, item.range);
+            const result = next({ ...item, uri: newUri, range: newRange }, token);
+            if (isThenable(result)) {
+                return result.then(
+                    this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, item.uri)
+                );
+            }
+            return this.converter.toIncomingCallHierarchyIncomingCallItems(item.uri, result);
+        }
+    }
+    public provideCallHierarchyOutgoingCalls(
+        item: CallHierarchyItem,
+        token: CancellationToken,
+        next: CallHierarchyOutgoingCallsSignature
+    ): ProviderResult<CallHierarchyOutgoingCall[]> {
+        if (this.shouldProvideIntellisense(item.uri)) {
+            const newUri = this.converter.toOutgoingUri(item.uri);
+            const newRange = this.converter.toOutgoingRange(item.uri, item.range);
+            const result = next({ ...item, uri: newUri, range: newRange }, token);
+            if (isThenable(result)) {
+                return result.then(
+                    this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, item.uri)
+                );
+            }
+            return this.converter.toIncomingCallHierarchyOutgoingCallItems(item.uri, result);
+        }
+    }
+
+    public provideDocumentSemanticTokens(
+        document: TextDocument,
+        token: CancellationToken,
+        _next: DocumentSemanticsTokensSignature
+    ): ProviderResult<SemanticTokens> {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+
+            // Since tokens are for a cell, we need to change the request for a range and not the entire document.
+            const newRange = this.converter.toOutgoingRange(document.uri, undefined);
+
+            const params: SemanticTokensRangeParams = {
+                textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
+                range: client.code2ProtocolConverter.asRange(newRange)
+            };
+
+            // Make the request directly (dont use the 'next' value)
+            const result = client.sendRequest(SemanticTokensRangeRequest.type, params, token);
+
+            // Then convert from protocol back to vscode types
+            return result.then((r) => {
+                const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
+                return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
+            });
+        }
+    }
+    public provideDocumentSemanticTokensEdits(
+        document: TextDocument,
+        previousResultId: string,
+        token: CancellationToken,
+        next: DocumentSemanticsTokensEditsSignature
+    ): ProviderResult<SemanticTokensEdits | SemanticTokens> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const result = next(newDoc, previousResultId, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingSemanticEdits(document.uri, result);
+        }
+    }
+    public provideDocumentRangeSemanticTokens(
+        document: TextDocument,
+        range: Range,
+        token: CancellationToken,
+        next: DocumentRangeSemanticTokensSignature
+    ): ProviderResult<SemanticTokens> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newRange = this.converter.toOutgoingRange(document, range);
+            const result = next(newDoc, newRange, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingSemanticTokens.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingSemanticTokens(document.uri, result);
+        }
+    }
+
+    public provideLinkedEditingRange(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideLinkedEditingRangeSignature
+    ): ProviderResult<LinkedEditingRanges> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const newDoc = this.converter.toOutgoingDocument(document);
+            const newPosition = this.converter.toOutgoingPosition(document, position);
+            const result = next(newDoc, newPosition, token);
+            if (isThenable(result)) {
+                return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter, document.uri));
+            }
+            return this.converter.toIncomingLinkedEditingRanges(document.uri, result);
         }
     }
 
@@ -569,5 +838,10 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
                 this.traceDisposable = client.onNotification('window/logMessage', this.traceInfo);
             }
         }
+    }
+
+    private shouldProvideIntellisense(uri: Uri): boolean {
+        // Make sure document is allowed
+        return this.isDocumentAllowed(uri);
     }
 }

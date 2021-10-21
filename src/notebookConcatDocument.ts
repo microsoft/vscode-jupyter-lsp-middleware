@@ -181,7 +181,7 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
         return this.concatDocument.validatePosition(pos);
     }
 
-    public locationAt(range: Range): Location {
+    public locationAt(range: Range | Position): Location {
         return this.concatDocument.locationAt(range);
     }
 
@@ -288,7 +288,7 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
         const changes = oldIndexes.map((index) => {
             // Figure out the position of the item in the new list
             const position =
-                index < newUris.length
+                index < newUris.length && this.filteredCellAt(index)
                     ? this.getPositionOfCell(this.filteredCellAt(index).document.uri)
                     : this.getEndPosition();
 

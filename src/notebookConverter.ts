@@ -29,7 +29,19 @@ import {
     Uri,
     WorkspaceEdit,
     NotebookDocument,
-    DocumentSelector
+    DocumentSelector,
+    Definition,
+    ColorInformation,
+    ColorPresentation,
+    FoldingRange,
+    SelectionRange,
+    CallHierarchyItem,
+    CallHierarchyIncomingCall,
+    CallHierarchyOutgoingCall,
+    SemanticTokens,
+    SemanticTokensEdits,
+    SemanticTokensEdit,
+    LinkedEditingRanges
 } from 'vscode';
 import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
@@ -253,14 +265,26 @@ export class NotebookConverter implements Disposable {
         return concat ? concat.positionAt(new Location(cell.uri, position)) : position;
     }
 
-    public toOutgoingRange(cell: TextDocument, cellRange: Range): Range {
+    public toOutgoingPositions(cell: TextDocument, positions: Position[]) {
+        return positions.map((p) => this.toOutgoingPosition(cell, p));
+    }
+
+    public toOutgoingRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
         const concat = this.getConcatDocument(cell);
         if (concat) {
-            const startPos = concat.positionAt(new Location(cell.uri, cellRange.start));
-            const endPos = concat.positionAt(new Location(cell.uri, cellRange.end));
+            const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+            const notebook = this.getNotebookDocument(cell);
+            const cellDocument =
+                cell instanceof Uri ? notebook?.getCells().find((c) => c.document.uri == uri)?.document : cell;
+            const start = cellRange ? cellRange.start : new Position(0, 0);
+            const end = cellRange
+                ? cellRange.end
+                : cellDocument?.lineAt(cellDocument.lineCount - 1).range.end || new Position(0, 0);
+            const startPos = concat.positionAt(new Location(uri, start));
+            const endPos = concat.positionAt(new Location(uri, end));
             return new Range(startPos, endPos);
         }
-        return cellRange;
+        return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
 
     public toOutgoingOffset(cell: TextDocument, offset: number): number {
@@ -308,7 +332,7 @@ export class NotebookConverter implements Disposable {
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toIncomingLocations(location: Location | Location[] | LocationLink[] | null | undefined) {
+    public toIncomingLocations(location: Definition | Location | Location[] | LocationLink[] | null | undefined) {
         if (Array.isArray(location)) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return (<any>location).map(this.toIncomingLocationOrLink.bind(this));
@@ -449,6 +473,20 @@ export class NotebookConverter implements Disposable {
         return this.toIncomingLocationFromRange(cell, new Range(position, position)).range.start;
     }
 
+    public toIncomingOffset(cell: TextDocument | Uri, offset: number): number {
+        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+        const wrapper = this.getWrapperFromOutgoingUri(uri);
+        if (wrapper && wrapper.notebook) {
+            const position = wrapper.positionAt(offset);
+            const location = wrapper.locationAt(position);
+            const cell = wrapper.notebook.getCells().find((c) => c.document.uri == location.uri);
+            if (cell) {
+                return cell.document.offsetAt(location.range.start);
+            }
+        }
+        return offset;
+    }
+
     public toIncomingUri(outgoingUri: Uri, range?: Range) {
         const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
         let result: Uri | undefined;
@@ -471,9 +509,200 @@ export class NotebookConverter implements Disposable {
         return result || outgoingUri;
     }
 
+    public toIncomingColorInformations(cellUri: Uri, colorInformations: ColorInformation[] | null | undefined) {
+        if (Array.isArray(colorInformations)) {
+            // Need to filter out color information for other cells. Pylance
+            // will return it for all.
+            return colorInformations
+                .map((c) => {
+                    return {
+                        color: c.color,
+                        location: this.toIncomingLocationFromRange(cellUri, c.range)
+                    };
+                })
+                .filter((cl) => cl.location.uri.fragment == cellUri.fragment)
+                .map((cl) => {
+                    return {
+                        color: cl.color,
+                        range: cl.location.range
+                    };
+                });
+        }
+    }
+
+    public toIncomingColorPresentations(cellUri: Uri, colorPresentations: ColorPresentation[] | null | undefined) {
+        if (Array.isArray(colorPresentations)) {
+            return colorPresentations.map((c) => {
+                return {
+                    ...c,
+                    additionalTextEdits: c.additionalTextEdits
+                        ? this.toIncomingTextEdits(cellUri, c.additionalTextEdits)
+                        : undefined,
+                    textEdit: c.textEdit ? this.toIncomingTextEdit(cellUri, c.textEdit) : undefined
+                };
+            });
+        }
+    }
+
+    public toIncomingTextEdits(cellUri: Uri, textEdits: TextEdit[] | null | undefined) {
+        if (Array.isArray(textEdits)) {
+            return textEdits.map((t) => this.toIncomingTextEdit(cellUri, t));
+        }
+    }
+
+    public toIncomingTextEdit(cellUri: Uri, textEdit: TextEdit) {
+        return {
+            ...textEdit,
+            range: this.toIncomingRange(cellUri, textEdit.range)
+        };
+    }
+
+    public toIncomingFoldingRanges(cellUri: Uri, ranges: FoldingRange[] | null | undefined) {
+        if (Array.isArray(ranges)) {
+            return ranges
+                .map((r) =>
+                    this.toIncomingLocationFromRange(
+                        cellUri,
+                        new Range(new Position(r.start, 0), new Position(r.end, 0))
+                    )
+                )
+                .filter((l) => l.uri == cellUri)
+                .map((l) => {
+                    return {
+                        start: l.range.start.line,
+                        end: l.range.end.line
+                    };
+                });
+        }
+    }
+
+    public toIncomingSelectionRanges(cellUri: Uri, ranges: SelectionRange[] | null | undefined) {
+        if (Array.isArray(ranges)) {
+            return ranges.map((r) => this.toIncomingSelectionRange(cellUri, r));
+        }
+    }
+
+    public toIncomingSelectionRange(cellUri: Uri, range: SelectionRange): SelectionRange {
+        return {
+            parent: range.parent ? this.toIncomingSelectionRange(cellUri, range.parent) : undefined,
+            range: this.toIncomingRange(cellUri, range.range)
+        };
+    }
+
+    public toIncomingCallHierarchyItems(
+        cellUri: Uri,
+        items: CallHierarchyItem | CallHierarchyItem[] | null | undefined
+    ) {
+        if (Array.isArray(items)) {
+            return items.map((r) => this.toIncomingCallHierarchyItem(cellUri, r));
+        } else if (items) {
+            return this.toIncomingCallHierarchyItem(cellUri, items);
+        }
+        return undefined;
+    }
+
+    public toIncomingCallHierarchyItem(cellUri: Uri, item: CallHierarchyItem) {
+        return {
+            ...item,
+            uri: cellUri,
+            range: this.toIncomingRange(cellUri, item.range),
+            selectionRange: this.toIncomingRange(cellUri, item.selectionRange)
+        };
+    }
+
+    public toIncomingCallHierarchyIncomingCallItems(
+        cellUri: Uri,
+        items: CallHierarchyIncomingCall[] | null | undefined
+    ) {
+        if (Array.isArray(items)) {
+            return items.map((r) => this.toIncomingCallHierarchyIncomingCallItem(cellUri, r));
+        }
+        return undefined;
+    }
+
+    public toIncomingCallHierarchyIncomingCallItem(
+        cellUri: Uri,
+        item: CallHierarchyIncomingCall
+    ): CallHierarchyIncomingCall {
+        return {
+            from: this.toIncomingCallHierarchyItem(cellUri, item.from),
+            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(cellUri, r))
+        };
+    }
+
+    public toIncomingCallHierarchyOutgoingCallItems(
+        cellUri: Uri,
+        items: CallHierarchyOutgoingCall[] | null | undefined
+    ) {
+        if (Array.isArray(items)) {
+            return items.map((r) => this.toIncomingCallHierarchyOutgoingCallItem(cellUri, r));
+        }
+        return undefined;
+    }
+
+    public toIncomingCallHierarchyOutgoingCallItem(
+        cellUri: Uri,
+        item: CallHierarchyOutgoingCall
+    ): CallHierarchyOutgoingCall {
+        return {
+            to: this.toIncomingCallHierarchyItem(cellUri, item.to),
+            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(cellUri, r))
+        };
+    }
+
+    public toIncomingSemanticEdits(cellUri: Uri, items: SemanticTokensEdits | SemanticTokens | null | undefined) {
+        if (items && 'edits' in items) {
+            return {
+                ...items,
+                edits: items.edits.map((e) => this.toIncomingSemanticEdit(cellUri, e))
+            };
+        } else if (items) {
+            return items;
+        }
+        return undefined;
+    }
+
+    public toIncomingSemanticEdit(cellUri: Uri, edit: SemanticTokensEdit) {
+        return {
+            ...edit,
+            start: this.toIncomingOffset(cellUri, edit.start)
+        };
+    }
+
+    public toIncomingSemanticTokens(cellUri: Uri, tokens: SemanticTokens | null | undefined) {
+        if (tokens) {
+            const wrapper = this.getTextDocumentWrapper(cellUri);
+            // First line offset is the wrong number. It is from the beginning of the concat doc and not the
+            // cell.
+            if (wrapper && wrapper.concatDocument && tokens.data.length > 0) {
+                const startOfCell = wrapper.concatDocument.positionAt(new Location(cellUri, new Position(0, 0)));
+
+                // Note to self: If tokenization stops working, might be pylance's fault. It does handle
+                // range requests but was returning stuff outside the range.
+
+                // Rewrite the first item by offsetting from the start of the cell. All other entries
+                // are offset from this one, so they don't need to be rewritten
+                tokens.data.set([tokens.data[0] - startOfCell.line], 0);
+
+                // Data array should have been updated.
+                return tokens;
+            }
+        }
+        return undefined;
+    }
+
+    public toIncomingLinkedEditingRanges(cellUri: Uri, items: LinkedEditingRanges | null | undefined) {
+        if (items) {
+            return {
+                ...items,
+                ranges: items.ranges.map((e) => this.toIncomingRange(cellUri, e))
+            };
+        }
+    }
+
     public remove(cell: TextDocument) {
         const key = NotebookConverter.getDocumentKey(cell.uri);
-        const wrapper = this.activeDocuments.get(key); 
+        const wrapper = this.activeDocuments.get(key);
         if (wrapper) {
             this.deleteWrapper(wrapper);
         }
@@ -758,5 +987,14 @@ export class NotebookConverter implements Disposable {
             return false;
         }
         return true;
+    }
+
+    private getNotebookDocument(cell: TextDocument | Uri): NotebookDocument | undefined {
+        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+        const key = NotebookConverter.getDocumentKey(uri);
+        let result = this.activeDocuments.get(key);
+        if (result) {
+            return result.notebook;
+        }
     }
 }

@@ -24,11 +24,11 @@ export function createNotebookMiddleware(
     cellSelector: DocumentSelector,
     notebookFileRegex: RegExp,
     pythonPath: string,
-    shouldProvideIntellisense: (uri: Uri) => boolean
+    isDocumentAllowed: (uri: Uri) => boolean
 ): NotebookMiddleware {
     // Current idea:
     // LanguageClients are created per interpreter (as they start) with a selector for all notebooks
-    // Middleware swallows all requests for notebooks that don't match itself (shouldProvideIntellisense returns false)
+    // Middleware swallows all requests for notebooks that don't match itself (isDocumentAllowed returns false)
     // Python extension is modified to no longer do intellisense for notebooks or interactive window
     return new NotebookMiddlewareAddon(
         notebookApi,
@@ -37,6 +37,6 @@ export function createNotebookMiddleware(
         cellSelector,
         notebookFileRegex,
         pythonPath,
-        shouldProvideIntellisense
+        isDocumentAllowed
     );
 }

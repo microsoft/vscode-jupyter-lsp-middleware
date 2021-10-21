@@ -1,10 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 import {
+    CallHierarchyIncomingCall,
+    CallHierarchyItem,
+    CallHierarchyOutgoingCall,
     CancellationToken,
     CodeAction,
     CodeActionContext,
     CodeLens,
+    Color,
+    ColorInformation,
+    ColorPresentation,
     Command,
     CompletionContext,
     CompletionItem,
@@ -16,12 +22,18 @@ import {
     DocumentHighlight,
     DocumentLink,
     DocumentSymbol,
+    FoldingContext,
+    FoldingRange,
     FormattingOptions,
+    LinkedEditingRanges,
     Location,
     Position,
     Position as VPosition,
     ProviderResult,
     Range,
+    SelectionRange,
+    SemanticTokens,
+    SemanticTokensEdits,
     SignatureHelp,
     SignatureHelpContext,
     SymbolInformation,
@@ -48,10 +60,30 @@ import {
     ProvideReferencesSignature,
     ProvideRenameEditsSignature,
     ProvideSignatureHelpSignature,
-    ResolveCompletionItemSignature} from 'vscode-languageclient/node';
+    ResolveCompletionItemSignature,
+} from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { isNotebookCell } from './common/utils';
+import {
+    PrepareCallHierarchySignature,
+    CallHierarchyIncomingCallsSignature,
+    CallHierarchyOutgoingCallsSignature
+} from 'vscode-languageclient/lib/common/callHierarchy';
+import {
+    ProvideDocumentColorsSignature,
+    ProvideColorPresentationSignature
+} from 'vscode-languageclient/lib/common/colorProvider';
+import { ProvideFoldingRangeSignature } from 'vscode-languageclient/lib/common/foldingRange';
+import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
+import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
+import { ProvideSelectionRangeSignature } from 'vscode-languageclient/lib/common/selectionRange';
+import {
+    DocumentSemanticsTokensSignature,
+    DocumentSemanticsTokensEditsSignature,
+    DocumentRangeSemanticTokensSignature
+} from 'vscode-languageclient/lib/common/semanticTokens';
+import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 
 /**
  * This class is used to hide all intellisense requests for notebook cells.
@@ -61,7 +93,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
     }
-    
+
     public dispose(): void {
         // Nothing to dispose at the moment
     }
@@ -285,6 +317,143 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
             next(uri, []);
         } else {
             next(uri, diagnostics);
+        }
+    }
+
+    public provideTypeDefinition(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideTypeDefinitionSignature
+    ) {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, position, token);
+        }
+    }
+
+    public provideImplementation(
+        document: TextDocument,
+        position: VPosition,
+        token: CancellationToken,
+        next: ProvideImplementationSignature
+    ): ProviderResult<Definition | DefinitionLink[]> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, position, token);
+        }
+    }
+
+    public provideDocumentColors(
+        document: TextDocument,
+        token: CancellationToken,
+        next: ProvideDocumentColorsSignature
+    ): ProviderResult<ColorInformation[]> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, token);
+        }
+    }
+    public provideColorPresentations(
+        color: Color,
+        context: {
+            document: TextDocument;
+            range: Range;
+        },
+        token: CancellationToken,
+        next: ProvideColorPresentationSignature
+    ): ProviderResult<ColorPresentation[]> {
+        if (!isNotebookCell(context.document.uri)) {
+            return next(color, context, token);
+        }
+    }
+
+    public provideFoldingRanges(
+        document: TextDocument,
+        context: FoldingContext,
+        token: CancellationToken,
+        next: ProvideFoldingRangeSignature
+    ): ProviderResult<FoldingRange[]> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, context, token);
+        }
+    }
+
+    public provideSelectionRanges(
+        document: TextDocument,
+        positions: Position[],
+        token: CancellationToken,
+        next: ProvideSelectionRangeSignature
+    ): ProviderResult<SelectionRange[]> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, positions, token);
+        }
+    }
+
+    public prepareCallHierarchy(
+        document: TextDocument,
+        positions: Position,
+        token: CancellationToken,
+        next: PrepareCallHierarchySignature
+    ): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, positions, token);
+        }
+    }
+    public provideCallHierarchyIncomingCalls(
+        item: CallHierarchyItem,
+        token: CancellationToken,
+        next: CallHierarchyIncomingCallsSignature
+    ): ProviderResult<CallHierarchyIncomingCall[]> {
+        if (!isNotebookCell(item.uri)) {
+            return next(item, token);
+        }
+    }
+    public provideCallHierarchyOutgoingCalls(
+        item: CallHierarchyItem,
+        token: CancellationToken,
+        next: CallHierarchyOutgoingCallsSignature
+    ): ProviderResult<CallHierarchyOutgoingCall[]> {
+        if (!isNotebookCell(item.uri)) {
+            return next(item, token);
+        }
+    }
+
+    public provideDocumentSemanticTokens(
+        document: TextDocument,
+        token: CancellationToken,
+        next: DocumentSemanticsTokensSignature
+    ): ProviderResult<SemanticTokens> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, token);
+        }
+    }
+    public provideDocumentSemanticTokensEdits(
+        document: TextDocument,
+        previousResultId: string,
+        token: CancellationToken,
+        next: DocumentSemanticsTokensEditsSignature
+    ): ProviderResult<SemanticTokensEdits | SemanticTokens> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, previousResultId, token);
+        }
+    }
+    public provideDocumentRangeSemanticTokens(
+        document: TextDocument,
+        range: Range,
+        token: CancellationToken,
+        next: DocumentRangeSemanticTokensSignature
+    ): ProviderResult<SemanticTokens> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, range, token);
+        }
+    }
+
+    public provideLinkedEditingRange(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideLinkedEditingRangeSignature
+    ): ProviderResult<LinkedEditingRanges> {
+        if (!isNotebookCell(document.uri)) {
+            return next(document, position, token);
         }
     }
 }
