@@ -32,6 +32,8 @@ const NotebookConcatPrefix = '_NotebookConcat_';
  * This helper class is used to present a converted document to an LS
  */
 export class NotebookConcatDocument implements TextDocument, IDisposable {
+    private _version = 1;
+
     public get uri(): Uri {
         return this.dummyUri;
     }
@@ -49,7 +51,7 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
     }
 
     public get version(): number {
-        return this._notebook.version;
+        return this._version;
     }
 
     public get isDirty(): boolean {
@@ -218,6 +220,7 @@ export class NotebookConcatDocument implements TextDocument, IDisposable {
     }
 
     private onDidChange() {
+        this._version += 1;
         const newUris = this.concatDocument.getComposeDocuments().map((document) => document.uri.toString());
         const oldUris = this.cellTracking.map((c) => c.uri.toString());
 
