@@ -89,12 +89,12 @@ export class NotebookConverter implements Disposable {
             // input
             const counter = /InteractiveInput-(\d+)/.exec(uri.path);
             if (counter && counter[1]) {
-                return `Interactive-${counter[1]}.interactive`;
+                return `interactive-${counter[1]}.interactive`;
             }
         }
 
         if (uri.scheme === InteractiveScheme) {
-            return uri.path;
+            return uri.path.toLowerCase();
         }
 
         // Use the path of the doc uri. It should be the same for all cells

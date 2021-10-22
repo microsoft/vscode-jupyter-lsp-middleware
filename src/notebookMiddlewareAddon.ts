@@ -825,7 +825,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
         // Note: The event should already be setup to be an outgoing event. It's from the point of view of the concatenated document.
         const client = this.getClient();
-        if (client) {
+        if (client && e.contentChanges && e.contentChanges.length) {
             const params = client.code2ProtocolConverter.asChangeTextDocumentParams(e);
             client.sendNotification(DidChangeTextDocumentNotification.type, params);
         }
