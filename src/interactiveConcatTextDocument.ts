@@ -168,6 +168,24 @@ export class InteractiveConcatTextDocument implements IConcatTextDocument {
         return `${a}\n${b}`;
     }
 
+    rangeAt(uri: Uri): Range | undefined {
+        let cellDocument = this._notebook
+            .getCells()
+            .find((c) => c.document.uri.toString() === uri.toString())?.document;
+        if (!cellDocument) {
+            cellDocument = uri.toString() === this._input?.uri.toString() ? this._input : undefined;
+        }
+        if (cellDocument) {
+            const start = this.positionAt(new Location(uri, new Position(0, 0)));
+            const endLine = Math.max(0, cellDocument.lineCount - 1);
+            const end = new Position(
+                endLine + start.line,
+                cellDocument.lineAt(endLine).rangeIncludingLineBreak.end.character
+            );
+            return new Range(start, end);
+        }
+    }
+
     offsetAt(position: Position): number {
         const { line } = position;
         if (line >= this._lineCounts[0]) {

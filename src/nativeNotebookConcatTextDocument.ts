@@ -98,6 +98,21 @@ export class EnhancedNotebookConcatTextDocument implements IConcatTextDocument {
         return this._concatTextDocument.positionAt(locationOrOffset);
     }
 
+    rangeAt(uri: Uri): Range | undefined {
+        const cellDocument = this._notebook
+            .getCells()
+            .find((c) => c.document.uri.toString() === uri.toString())?.document;
+        if (cellDocument) {
+            const start = this.positionAt(new Location(uri, new Position(0, 0)));
+            const endLine = Math.max(0, cellDocument.lineCount - 1);
+            const end = new Position(
+                endLine + start.line,
+                cellDocument.lineAt(endLine).rangeIncludingLineBreak.end.character
+            );
+            return new Range(start, end);
+        }
+    }
+
     validateRange(range: Range): Range {
         return this._concatTextDocument.validateRange(range);
     }

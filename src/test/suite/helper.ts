@@ -63,13 +63,15 @@ export function mockTextDocument(uri: vscode.Uri, languageId: string, source: st
                 return {
                     lineNumber: line + 1,
                     text: source[line],
-                    range: new vscode.Range(line + 1, 1, line + 1, source[line].length + 1)
+                    range: new vscode.Range(line + 1, 1, line + 1, source[line].length + 1),
+                    rangeIncludingLineBreak: new vscode.Range(line + 1, 1, line + 1, source[line].length + 1)
                 } as vscode.TextLine;
             } else {
                 return {
                     lineNumber: line.line + 1,
                     text: source[line.line],
-                    range: new vscode.Range(line.line + 1, 1, line.line + 1, source[line.line].length + 1)
+                    range: new vscode.Range(line.line + 1, 1, line.line + 1, source[line.line].length + 1),
+                    rangeIncludingLineBreak: new vscode.Range(line.line + 1, 1, line.line + 1, source[line.line].length + 1)
                 } as vscode.TextLine;
             }
         }

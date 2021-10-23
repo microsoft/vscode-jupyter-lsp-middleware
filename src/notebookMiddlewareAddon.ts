@@ -766,7 +766,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             // Then convert from protocol back to vscode types
             return result.then((r) => {
                 const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
-                return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
+                return this.converter.toIncomingSemanticRangeTokens(document.uri, vscodeTokens);
             });
         }
     }

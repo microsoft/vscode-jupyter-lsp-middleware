@@ -273,16 +273,14 @@ export class NotebookConverter implements Disposable {
         const concat = this.getConcatDocument(cell);
         if (concat) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-            const notebook = this.getNotebookDocument(cell);
-            const cellDocument =
-                cell instanceof Uri ? notebook?.getCells().find((c) => c.document.uri == uri)?.document : cell;
-            const start = cellRange ? cellRange.start : new Position(0, 0);
-            const end = cellRange
-                ? cellRange.end
-                : cellDocument?.lineAt(cellDocument.lineCount - 1).range.end || new Position(0, 0);
-            const startPos = concat.positionAt(new Location(uri, start));
-            const endPos = concat.positionAt(new Location(uri, end));
-            return new Range(startPos, endPos);
+            const outgoingfullCellRange = concat.rangeAt(uri) || new Range(new Position(0, 0), new Position(0, 0));
+            const incomingStart = cellRange ? cellRange.start : new Position(0, 0);
+            const incomingEnd = cellRange?.end;
+            const start = new Position(outgoingfullCellRange.start.line + incomingStart.line, incomingStart.character);
+            const end = incomingEnd
+                ? new Position(outgoingfullCellRange.start.line + incomingEnd.line, incomingEnd.character)
+                : outgoingfullCellRange.end;
+            return new Range(start, end);
         }
         return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
@@ -657,36 +655,36 @@ export class NotebookConverter implements Disposable {
                 edits: items.edits.map((e) => this.toIncomingSemanticEdit(cellUri, e))
             };
         } else if (items) {
-            return items;
+            return this.toIncomingSemanticTokens(cellUri, items);
         }
         return undefined;
     }
 
     public toIncomingSemanticEdit(cellUri: Uri, edit: SemanticTokensEdit) {
-        return {
-            ...edit,
-            start: this.toIncomingOffset(cellUri, edit.start)
-        };
+        // This is a bit tricky. If the start offset is zero, we need to modify the start line
+        // but otherwise leave alone
+        if (edit.start === 0 && edit.data && edit.data.length > 0) {
+            const startLine = this.getCellStartLine(cellUri);
+            return {
+                ...edit,
+                data: new Uint32Array([edit.data[0] - startLine, ...edit.data.slice(1)])
+            };
+        }
+        return edit;
     }
 
-    public toIncomingSemanticTokens(cellUri: Uri, tokens: SemanticTokens | null | undefined) {
-        if (tokens) {
-            const wrapper = this.getTextDocumentWrapper(cellUri);
+    public toIncomingSemanticRangeTokens(cellUri: Uri, tokens: SemanticTokens | null | undefined) {
+        if (tokens && tokens.data) {
             // First line offset is the wrong number. It is from the beginning of the concat doc and not the
             // cell.
-            if (wrapper && wrapper.concatDocument && tokens.data.length > 0) {
-                const startOfCell = wrapper.concatDocument.positionAt(new Location(cellUri, new Position(0, 0)));
+            const startLine = this.getCellStartLine(cellUri);
 
-                // Note to self: If tokenization stops working, might be pylance's fault. It does handle
-                // range requests but was returning stuff outside the range.
+            // Rewrite the first item by offsetting from the start of the cell. All other entries
+            // are offset from this one, so they don't need to be rewritten
+            tokens.data.set([tokens.data[0] - startLine], 0);
 
-                // Rewrite the first item by offsetting from the start of the cell. All other entries
-                // are offset from this one, so they don't need to be rewritten
-                tokens.data.set([tokens.data[0] - startOfCell.line], 0);
-
-                // Data array should have been updated.
-                return tokens;
-            }
+            // Data array should have been updated.
+            return tokens;
         }
         return undefined;
     }
@@ -706,6 +704,14 @@ export class NotebookConverter implements Disposable {
         if (wrapper) {
             this.deleteWrapper(wrapper);
         }
+    }
+
+    private getCellStartLine(cellUri: Uri): number {
+        const wrapper = this.getTextDocumentWrapper(cellUri);
+        if (wrapper && wrapper.concatDocument) {
+            return wrapper.concatDocument.positionAt(new Location(cellUri, new Position(0, 0))).line;
+        }
+        return 0;
     }
 
     private getTextDocumentAtLocation(location: Location): TextDocument | undefined {
@@ -987,14 +993,5 @@ export class NotebookConverter implements Disposable {
             return false;
         }
         return true;
-    }
-
-    private getNotebookDocument(cell: TextDocument | Uri): NotebookDocument | undefined {
-        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-        const key = NotebookConverter.getDocumentKey(uri);
-        let result = this.activeDocuments.get(key);
-        if (result) {
-            return result.notebook;
-        }
     }
 }

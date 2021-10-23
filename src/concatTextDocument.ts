@@ -13,6 +13,7 @@ export interface IConcatTextDocument {
     contains(uri: Uri): boolean;
     offsetAt(position: Position): number;
     positionAt(locationOrOffset: Location | number): Position;
+    rangeAt(uri: Uri): Range | undefined;
     validateRange(range: Range): Range;
     validatePosition(position: Position): Position;
     locationAt(positionOrRange: Position | Range): Location;

@@ -42,6 +42,8 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(concat.lineCount, 3);
                 assert.strictEqual(concat.languageId, 'python');
                 assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)'].join('\n'));
+                assert.deepStrictEqual(concat.rangeAt(notebookDocument.cellAt(0).document.uri), new Range(new Position(0, 0), new Position(0, 9)));
+                assert.deepStrictEqual(concat.rangeAt(notebookDocument.cellAt(2).document.uri), new Range(new Position(1, 0), new Position(2, 11)));
             }
         );
     });
@@ -120,6 +122,9 @@ suite('concatTextDocument', () => {
                     concat.positionAt(new Location(inputDocument.uri, new Position(0, 3))),
                     new Position(3, 3)
                 );
+                assert.deepStrictEqual(concat.rangeAt(notebookDocument.cellAt(0).document.uri), new Range(new Position(0, 0), new Position(0, 9)));
+                assert.deepStrictEqual(concat.rangeAt(notebookDocument.cellAt(2).document.uri), new Range(new Position(1, 0), new Position(2, 11)));
+                assert.deepStrictEqual(concat.rangeAt(inputDocument.uri), new Range(new Position(3, 0), new Position(3, 13)));
             }
         );
     });

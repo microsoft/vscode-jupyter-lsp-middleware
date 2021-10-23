@@ -27,7 +27,7 @@
             ],
             "env": {
                 // Set this to specify grep for test matching
-                "CI_TEST_GREP": ""
+                "CI_TEST_GREP": "concat document"
             },
             "preLaunchTask": "BuildTests",
             "skipFiles": ["<node_internals>/**"],
