@@ -772,17 +772,33 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
     public provideDocumentSemanticTokensEdits(
         document: TextDocument,
-        previousResultId: string,
+        _previousResultId: string,
         token: CancellationToken,
-        next: DocumentSemanticsTokensEditsSignature
+        _next: DocumentSemanticsTokensEditsSignature
     ): ProviderResult<SemanticTokensEdits | SemanticTokens> {
-        if (this.shouldProvideIntellisense(document.uri)) {
+        // Token edits work with previous token response. However pylance
+        // doesn't know about the cell so it sends back ALL tokens. 
+        // Instead just ask for a range.
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
             const newDoc = this.converter.toOutgoingDocument(document);
-            const result = next(newDoc, previousResultId, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSemanticEdits.bind(this.converter, document.uri));
-            }
-            return this.converter.toIncomingSemanticEdits(document.uri, result);
+
+            // Since tokens are for a cell, we need to change the request for a range and not the entire document.
+            const newRange = this.converter.toOutgoingRange(document.uri, undefined);
+
+            const params: SemanticTokensRangeParams = {
+                textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
+                range: client.code2ProtocolConverter.asRange(newRange)
+            };
+
+            // Make the request directly (dont use the 'next' value)
+            const result = client.sendRequest(SemanticTokensRangeRequest.type, params, token);
+
+            // Then convert from protocol back to vscode types
+            return result.then((r) => {
+                const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
+                return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
+            });
         }
     }
     public provideDocumentRangeSemanticTokens(
