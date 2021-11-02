@@ -16,7 +16,7 @@ import {
     captureScreenShot,
     captureOutputMessages,
     LanguageServer,
-    sleep
+    waitForDiagnostics
 } from './helper';
 
 export const PYTHON_LANGUAGE = 'python';
@@ -28,7 +28,7 @@ export const NOTEBOOK_SELECTOR: DocumentFilter[] = [
 ];
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
-suite('Hiding tests', function () {
+suite('Pylance tests', function () {
     const disposables: Disposable[] = [];
     let languageServer: LanguageServer | undefined = undefined;
     let allowIntellisense = true;
@@ -48,7 +48,7 @@ suite('Hiding tests', function () {
         languageServer = await createLanguageServer(
             'lsp-middleware-test',
             NOTEBOOK_SELECTOR,
-            'hiding',
+            'pylance',
             shouldProvideIntellisense
         );
     });
@@ -72,7 +72,8 @@ suite('Hiding tests', function () {
         closeNotebooksAndCleanUpAfterTests(disposables);
         await languageServer?.dispose();
     });
-    test('Edit a cell and make sure diagnostics dont show up', async () => {
+    test('Edit a cell and make sure diagnostics do show up', async () => {
+        // Pylance should definitely be able to handle a single cell
         const cell = await insertCodeCell('import sys\nprint(sys.executable)\na = 1');
         // Should be no diagnostics yet
         let diagnostics = languages.getDiagnostics(cell.document.uri);
@@ -84,9 +85,7 @@ suite('Hiding tests', function () {
         edit.replace(cell.document.uri, new Range(new Position(0, 7), new Position(0, 10)), 'system');
         await workspace.applyEdit(edit);
 
-        // Sleep a bit
-        await sleep(2000);
-        diagnostics = languages.getDiagnostics(cell.document.uri);
-        assert.isEmpty(diagnostics, 'No diagnostics should be found after applying the invalid edit');
+        // There should be diagnostics now
+        await waitForDiagnostics(cell.document.uri);
     });
 });

@@ -63,7 +63,7 @@ suite('Notebook tests', function () {
         languageServer = await createLanguageServer(
             'lsp-middleware-test',
             NOTEBOOK_SELECTOR,
-            false,
+            'notebook',
             shouldProvideIntellisense
         );
     });
@@ -230,7 +230,7 @@ suite('Notebook tests', function () {
         );
     });
     test('Make sure diags are skipped when not allowing', async function () {
-        this.skip(); // Skip for now. Requires jupyter to not be providing intellisense too
+        this.skip(); // Skip for now. Requires jupyter extension to not be providing intellisense too
         allowIntellisense = false;
         await insertCodeCell('import sys\nprint(sys.executable)');
         await insertCodeCell('import sys\nprint(sys.executable)');

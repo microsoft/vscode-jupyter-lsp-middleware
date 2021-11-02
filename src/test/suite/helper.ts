@@ -23,7 +23,7 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware, createHidingMiddleware } from '../..';
+import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 
@@ -870,10 +870,40 @@ export class LanguageServer implements vscode.Disposable {
     }
 }
 
+export type MiddlewareType = 'pylance' | 'hiding' | 'notebook';
+
+function createMiddleware(
+    middlewareType: MiddlewareType,
+    notebookApi: IVSCodeNotebook,
+    getClient: () => LanguageClient | undefined,
+    traceInfo: (...args: any[]) => void,
+    cellSelector: DocumentSelector,
+    notebookFileRegex: RegExp,
+    pythonPath: string,
+    isDocumentAllowed: (uri: vscode.Uri) => boolean
+) {
+    switch (middlewareType) {
+        case 'hiding':
+            return createHidingMiddleware();
+        case 'pylance':
+            return createPylanceMiddleware(getClient, pythonPath, isDocumentAllowed);
+        case 'notebook':
+            return createNotebookMiddleware(
+                notebookApi,
+                getClient,
+                traceInfo,
+                cellSelector,
+                notebookFileRegex,
+                pythonPath,
+                isDocumentAllowed
+            );
+    }
+}
+
 async function startLanguageServer(
     outputChannel: string,
     languageServerFolder: string,
-    hidingMiddleware: boolean,
+    middlewareType: MiddlewareType,
     pythonPath: string,
     selector: DocumentSelector,
     shouldProvideIntellisense: (uri: vscode.Uri) => boolean
@@ -902,7 +932,8 @@ async function startLanguageServer(
         }
     };
 
-    const middleware = hidingMiddleware ? createHidingMiddleware() : createNotebookMiddleware(
+    const middleware = createMiddleware(
+        middlewareType,
         notebookApi,
         () => languageClient,
         traceInfo,
@@ -952,7 +983,7 @@ async function startLanguageServer(
 export async function createLanguageServer(
     outputChannel: string,
     selector: DocumentSelector,
-    hidingMiddleware: boolean,
+    middlewareType: MiddlewareType,
     shouldProvideIntellisense: (uri: vscode.Uri) => boolean
 ): Promise<LanguageServer | undefined> {
     // Python should be installed too.
@@ -972,7 +1003,7 @@ export async function createLanguageServer(
         return startLanguageServer(
             outputChannel,
             path.join(pylance.extensionPath, 'dist'),
-            hidingMiddleware,
+            middlewareType,
             pythonPath,
             selector,
             shouldProvideIntellisense

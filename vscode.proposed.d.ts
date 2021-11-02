@@ -1575,6 +1575,10 @@ declare module 'vscode' {
 	}
 
 	export interface NotebookController {
+		/**
+		 * The human-readable label used to categorise controllers.
+		 */
+		kind?: string;
 
 		// todo@API allow add, not remove
 		readonly rendererScripts: NotebookRendererScript[];
@@ -1822,6 +1826,7 @@ declare module 'vscode' {
 		/**
 		 * The text of the hint.
 		 */
+		// todo@API label?
 		text: string;
 		/**
 		 * The position of this hint.

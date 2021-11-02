@@ -6,6 +6,7 @@ import { LanguageClient, Middleware } from 'vscode-languageclient/node';
 import { IVSCodeNotebook } from './common/types';
 import { HidingMiddlewareAddon } from './hidingMiddlewareAddon';
 import { NotebookMiddlewareAddon } from './notebookMiddlewareAddon';
+import { PylanceMiddlewareAddon } from './pylanceMiddlewareAddon';
 
 export type NotebookMiddleware = Middleware & Disposable & {
     stopWatching(notebook: NotebookDocument): void;
@@ -36,6 +37,20 @@ export function createNotebookMiddleware(
         traceInfo,
         cellSelector,
         notebookFileRegex,
+        pythonPath,
+        isDocumentAllowed
+    );
+}
+
+export function createPylanceMiddleware(
+    getClient: () => LanguageClient | undefined,
+    pythonPath: string,
+    isDocumentAllowed: (uri: Uri) => boolean
+): NotebookMiddleware {
+    // LanguageClients are created per interpreter (as they start) with a selector for all notebooks
+    // Middleware swallows all requests for notebooks that don't match itself (isDocumentAllowed returns false)
+    return new PylanceMiddlewareAddon(
+        getClient,
         pythonPath,
         isDocumentAllowed
     );
