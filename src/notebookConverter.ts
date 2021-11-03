@@ -347,13 +347,21 @@ export class NotebookConverter implements Disposable {
         cell: TextDocument,
         highlight: DocumentHighlight[] | null | undefined
     ): DocumentHighlight[] | undefined {
-        if (highlight) {
-            return highlight.map((h) => ({
-                ...h,
-                range: this.toIncomingRange(cell, h.range)
-            }));
+        if (!highlight) {
+            return undefined;
         }
-        return highlight ?? undefined;
+        const concat = this.getConcatDocument(cell);
+        if (!concat) {
+            return undefined;
+        }
+        const result: DocumentHighlight[] = [];
+        for (let h of highlight) {
+            const loc = concat.locationAt(h.range);
+            if (loc.uri.toString() === cell.uri.toString()) {
+                result.push({ ...h, range: loc.range });
+            }
+        }
+        return result;
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
@@ -421,17 +429,17 @@ export class NotebookConverter implements Disposable {
         rangeOrRename:
             | Range
             | {
-                  range: Range;
-                  placeholder: string;
-              }
+                range: Range;
+                placeholder: string;
+            }
             | null
             | undefined
     ):
         | Range
         | {
-              range: Range;
-              placeholder: string;
-          }
+            range: Range;
+            placeholder: string;
+        }
         | undefined {
         if (rangeOrRename) {
             if (rangeOrRename instanceof Range) {
