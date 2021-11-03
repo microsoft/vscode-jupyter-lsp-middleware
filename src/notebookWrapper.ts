@@ -4,7 +4,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
-import { score } from '../dist/concatTextDocument';
+import { score } from './common/utils';
 import { NotebookConcatDocument } from './notebookConcatDocument';
 
 /**

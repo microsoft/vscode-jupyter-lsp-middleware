@@ -26,6 +26,7 @@ import {
 import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
+import { NotebookWrapper } from '../../notebookWrapper';
 
 export interface Ctor<T> {
     new (): T;
@@ -112,7 +113,7 @@ export function withTestNotebook(
         output?: vscode.NotebookCellOutput[],
         metadata?: any
     ][],
-    callback: (notebookDocument: vscode.NotebookDocument, notebookApi: IVSCodeNotebook) => void
+    callback: (notebookDocument: vscode.NotebookDocument) => void
 ) {
     let notebookDocument: vscode.NotebookDocument;
     const notebookCells = cells.map((cell, index) => {
@@ -158,7 +159,7 @@ export function withTestNotebook(
         }
     })();
 
-    callback(notebookDocument, notebookApi);
+    callback(notebookDocument);
 }
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
@@ -1009,4 +1010,13 @@ export async function createLanguageServer(
             shouldProvideIntellisense
         );
     }
+}
+
+export function generateWrapper(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
+    const wrapper = new NotebookWrapper(notebook, 'python', `1`);
+    notebook.getCells().forEach((c) => wrapper.handleOpen(c.document));
+    if (extraCells) {
+        extraCells.forEach((c) => wrapper.handleOpen(c));
+    }
+    return wrapper;
 }
