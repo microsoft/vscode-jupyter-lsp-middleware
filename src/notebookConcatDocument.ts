@@ -71,7 +71,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     private _contents: string = '';
     private _cellRanges: ICellRange[] = [];
 
-    public handleChange(e: protocol.TextDocumentEdit): protocol.TextDocumentContentChangeEvent[] {
+    public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams {
         this._version++;
         const changes: protocol.TextDocumentContentChangeEvent[] = [];
         const cellIndex = this._cellRanges.findIndex((c) => c.uri.toString() === e.textDocument.uri);
@@ -85,10 +85,10 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 changes.push(...this.changeRange(normalized, from, to, cellIndex));
             });
         }
-        return changes;
+        return this.toDidChangeTextDocumentParams(changes);
     }
 
-    public handleOpen(e: protocol.TextDocumentItem): protocol.TextDocumentContentChangeEvent[] {
+    public handleOpen(e: protocol.TextDocumentItem): protocol.DidChangeTextDocumentParams {
         this._version = Math.max(e.version, this._version + 1);
         this._closed = false;
         const cellUri = vscode.Uri.parse(e.uri);
@@ -135,17 +135,19 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             endOffset: fromOffset + newCode.length
         });
 
-        return [
+        const changes: protocol.TextDocumentContentChangeEvent[] = [
             {
                 range: this.createSerializableRange(fromPosition, fromPosition),
+                rangeOffset: fromOffset,
                 rangeLength: 0, // Opens are always zero
                 text: newCode
-            }
+            } as any
         ];
+        return this.toDidChangeTextDocumentParams(changes);
     }
 
-    public handleClose(e: protocol.TextDocumentItem): protocol.TextDocumentContentChangeEvent[] {
-        let change: protocol.TextDocumentContentChangeEvent[] = [];
+    public handleClose(e: protocol.TextDocumentIdentifier): protocol.DidChangeTextDocumentParams {
+        let changes: protocol.TextDocumentContentChangeEvent[] = [];
         const index = this._cellRanges.findIndex((c) => c.uri.toString() === e.uri);
 
         // Ignore unless in notebook mode. For interactive, cells are still there.
@@ -170,12 +172,13 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             this._contents = `${before}${after}`;
             this._lines = this.createLines();
 
-            change = [
+            changes = [
                 {
                     range: this.createSerializableRange(from, to),
+                    rangeOffset: found.startOffset,
                     rangeLength: foundLength,
                     text: ''
-                }
+                } as any
             ];
 
             // If we closed the last cell, mark as closed
@@ -184,7 +187,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             }
         }
 
-        return change;
+        return this.toDidChangeTextDocumentParams(changes);
     }
 
     public dispose() {
@@ -348,6 +351,18 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return change;
     }
 
+    private toDidChangeTextDocumentParams(
+        changes: protocol.TextDocumentContentChangeEvent[]
+    ): protocol.DidChangeTextDocumentParams {
+        return {
+            textDocument: {
+                version: this.version,
+                uri: this.concatUri.toString()
+            },
+            contentChanges: changes
+        };
+    }
+
     private getLineFromOffset(offset: number) {
         let lineCounter = 0;
 
@@ -388,9 +403,10 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return [
             {
                 range: this.createSerializableRange(from, to),
+                rangeOffset: fromOffset,
                 rangeLength: toOffset - fromOffset,
                 text: newText
-            }
+            } as any
         ];
     }
 
