@@ -117,7 +117,7 @@ export function withTestNotebook(
 ) {
     let notebookDocument: vscode.NotebookDocument;
     const notebookCells = cells.map((cell, index) => {
-        const cellUri = uri.with({ fragment: `ch${index.toString().padStart(7, '0')}` });
+        const cellUri = uri.with({ fragment: `ch${index.toString().padStart(7, '0')}`, scheme: NotebookCellScheme });
 
         return new (class extends mock<vscode.NotebookCell>() {
             override get index() {

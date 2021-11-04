@@ -5,12 +5,12 @@
 
 import * as assert from 'assert';
 import { generateWrapper, withTestNotebook } from './helper';
-import { EventEmitter, NotebookCellKind, NotebookConcatTextDocument, NotebookDocument, Uri } from 'vscode';
+import { NotebookCellKind, NotebookDocument, Uri } from 'vscode';
 
 suite('Editing Tests', () => {
     test('Edit a notebook', () => {
         withTestNotebook(
-            Uri.parse('test://test.ipynb'),
+            Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
             [
                 [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
                 [['print(2)'], 'python', NotebookCellKind.Code, [], {}],
@@ -19,22 +19,21 @@ suite('Editing Tests', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
-                assert.strictEqual(concat.getText(), ['print(1)', 'print(2)', 'foo = 2', 'print(foo)'].join('\n'));
-
-                const concatTextDocument: NotebookConcatTextDocument = (concat as any)._concatTextDocument;
-                const emitter: EventEmitter<void> = (concatTextDocument as any)._onDidChange;
+                assert.strictEqual(concat.getText(), ['print(1)', 'print(2)', 'foo = 2', 'print(foo)', ''].join('\n'));
 
                 // Verify if we delete markdown, we still have same count
+                const markdown = notebookDocument.getCells()[2];
                 notebookDocument.getCells().splice(2, 1);
-                emitter.fire();
-                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
+                concat.handleClose(markdown.document);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
 
                 // Verify if we delete python, we still have new count
+                const python = notebookDocument.getCells()[1];
                 notebookDocument.getCells().splice(1, 1);
-                emitter.fire();
-                assert.strictEqual(concat.getConcatDocument().lineCount, 3);
+                concat.handleClose(python.document);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
             }
         );
     });
