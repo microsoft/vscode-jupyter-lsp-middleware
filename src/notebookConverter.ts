@@ -40,7 +40,6 @@ import {
     SemanticTokensEdit,
     LinkedEditingRanges
 } from 'vscode';
-import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
 import * as path from 'path';
 import { NotebookWrapper } from './notebookWrapper';
@@ -59,13 +58,7 @@ export class NotebookConverter implements Disposable {
 
     private mapOfConcatDocumentsWithCellUris = new Map<string, string[]>();
 
-    constructor(private api: IVSCodeNotebook, private cellSelector: DocumentSelector, private notebookFilter: RegExp) {
-        this.disposables.push(api.onDidOpenNotebookDocument(this.onDidOpenNotebook.bind(this)));
-        this.disposables.push(api.onDidCloseNotebookDocument(this.onDidCloseNotebook.bind(this)));
-
-        // Call open on all of the active notebooks too
-        api.notebookDocuments.forEach(this.onDidOpenNotebook.bind(this));
-    }
+    constructor(private cellSelector: DocumentSelector) {}
 
     private static getDocumentKey(uri: Uri): string {
         if (uri.scheme === InteractiveInputScheme) {
@@ -106,12 +99,17 @@ export class NotebookConverter implements Disposable {
 
     public handleOpen(cell: TextDocument) {
         const wrapper = this.getTextDocumentWrapper(cell);
-        return wrapper?.handleOpen(cell) || [];
+        const results = wrapper?.handleOpen(cell) || [];
+        if (wrapper) {
+            // concat uri is empty until a cell is added.
+            this.activeWrappersOutgoingMap.set(NotebookConverter.getDocumentKey(wrapper.concatUri), wrapper);
+        }
+        return results;
     }
 
     public handleClose(cell: TextDocument) {
         const wrapper = this.getTextDocumentWrapper(cell);
-        return wrapper?.handleOpen(cell) || [];
+        return wrapper?.handleClose(cell) || [];
     }
 
     public handleChange(event: TextDocumentChangeEvent) {
@@ -865,25 +863,6 @@ export class NotebookConverter implements Disposable {
         };
     }
 
-    private onDidOpenNotebook(doc: NotebookDocument) {
-        if (this.notebookFilter.test(doc.uri.fsPath)) {
-            this.getTextDocumentWrapper(doc.uri);
-            const key = NotebookConverter.getDocumentKey(doc.uri);
-            this.pendingCloseWrappers.delete(key);
-        }
-    }
-
-    private onDidCloseNotebook(doc: NotebookDocument) {
-        if (this.notebookFilter.test(doc.uri.fsPath)) {
-            const key = NotebookConverter.getDocumentKey(doc.uri);
-            const wrapper = this.activeWrappers.get(key);
-            if (wrapper) {
-                this.pendingCloseWrappers.set(key, wrapper);
-                this.deleteWrapper(wrapper);
-            }
-        }
-    }
-
     private deleteWrapper(wrapper: NotebookWrapper) {
         // Cleanup both maps and dispose of the wrapper (disconnects the cell change emitter)
         this.activeWrappersOutgoingMap.delete(NotebookConverter.getDocumentKey(wrapper.concatUri));
@@ -912,7 +891,6 @@ export class NotebookConverter implements Disposable {
             }
             result = new NotebookWrapper(doc, this.cellSelector, key);
             this.activeWrappers.set(key, result);
-            this.activeWrappersOutgoingMap.set(NotebookConverter.getDocumentKey(result.concatUri), result);
         }
         return result;
     }
