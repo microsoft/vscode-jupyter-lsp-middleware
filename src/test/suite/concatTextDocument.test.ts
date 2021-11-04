@@ -25,6 +25,67 @@ suite('concatTextDocument', () => {
         assert.strictEqual(score(mockTextDocument(Uri.file(longer), 'python', []), filter), 10);
     });
 
+    test(`edits to a cell`, () => {
+        withTestNotebook(
+            Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
+            [
+                [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
+                [['test'], 'markdown', NotebookCellKind.Markup, [], {}],
+                [['foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
+            ],
+            (notebookDocument: NotebookDocument) => {
+                const concat = generateWrapper(notebookDocument);
+
+                // Try insertion
+                concat.handleChange({
+                    document: notebookDocument.cellAt(2).document,
+                    contentChanges: [
+                        {
+                            range: new Range(new Position(0, 0), new Position(0, 0)),
+                            rangeOffset: 0,
+                            rangeLength: 0,
+                            text: 'bar'
+                        }
+                    ],
+                    reason: undefined
+                });
+
+                assert.strictEqual(concat.getText(), ['print(1)', 'barfoo = 2', 'print(foo)', ''].join('\n'));
+                // Then deletion
+                concat.handleChange({
+                    document: notebookDocument.cellAt(2).document,
+                    contentChanges: [
+                        {
+                            range: new Range(new Position(0, 3), new Position(0, 6)),
+                            rangeOffset: 3,
+                            rangeLength: 3,
+                            text: ''
+                        }
+                    ],
+                    reason: undefined
+                });
+
+                assert.strictEqual(concat.getText(), ['print(1)', 'bar = 2', 'print(foo)', ''].join('\n'));
+
+                // Then replace
+                concat.handleChange({
+                    document: notebookDocument.cellAt(2).document,
+                    contentChanges: [
+                        {
+                            range: new Range(new Position(1, 6), new Position(1, 9)),
+                            rangeOffset: 0,
+                            rangeLength: 3,
+                            text: 'bar'
+                        }
+                    ],
+                    reason: undefined
+                });
+
+                assert.strictEqual(concat.getText(), ['print(1)', 'bar = 2', 'print(bar)', ''].join('\n'));
+            }
+        );
+    });
+
     test('concat document for notebook', () => {
         withTestNotebook(
             Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),

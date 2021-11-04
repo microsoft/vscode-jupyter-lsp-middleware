@@ -68,7 +68,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     private _concatUri: vscode.Uri | undefined;
     private _notebookUri: vscode.Uri | undefined;
     private _version = 1;
-    private _closed = false;
+    private _closed = true;
     private _lines: NotebookConcatLine[] = [];
     private _contents: string = '';
     private _cellRanges: ICellRange[] = [];

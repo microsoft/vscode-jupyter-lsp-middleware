@@ -29,6 +29,7 @@ import {
     LinkedEditingRanges,
     Location,
     NotebookDocument,
+    notebooks,
     Position,
     Position as VPosition,
     ProviderResult,
@@ -44,7 +45,9 @@ import {
     TextDocumentWillSaveEvent,
     TextEdit,
     Uri,
-    WorkspaceEdit
+    WorkspaceEdit,
+    workspace,
+    NotebookCellsChangeEvent
 } from 'vscode';
 import {
     ConfigurationParams,
@@ -102,6 +105,7 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
+import { getVSCodeDownloadUrl } from 'vscode-test/out/util';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -111,18 +115,16 @@ import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/co
  */
 export class NotebookMiddlewareAddon implements Middleware, Disposable {
     private converter: NotebookConverter;
-    private traceDisposable: Disposable | undefined;
+    private disposables: Disposable[] = [];
 
     constructor(
-        private readonly notebookApi: IVSCodeNotebook,
         private readonly getClient: () => LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
         cellSelector: string | DocumentSelector,
-        notebookFileRegex: RegExp,
         private readonly pythonPath: string,
         private readonly isDocumentAllowed: (uri: Uri) => boolean
     ) {
-        this.converter = new NotebookConverter(notebookApi, cellSelector, notebookFileRegex);
+        this.converter = new NotebookConverter(cellSelector);
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
@@ -132,6 +134,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.didClose = this.didClose.bind(this);
         this.willSave = this.willSave.bind(this);
         this.willSaveWaitUntil = this.willSaveWaitUntil.bind(this);
+
+        // Since there are no LSP requests for moving cells around, we need to handle this ourselves
+        notebooks.onDidChangeNotebookCells(this.onDidChangeNotebookCells, this, this.disposables);
     }
 
     public workspace = {
@@ -160,8 +165,8 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     };
 
     public dispose(): void {
-        this.traceDisposable?.dispose();
-        this.traceDisposable = undefined;
+        this.disposables.forEach((d) => d.dispose());
+        this.disposables = [];
         this.converter.dispose();
     }
 
@@ -181,7 +186,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             }
 
             // Remove from tracking by the converter
-            this.converter.remove(notebook.cellAt(0).document);
+            notebook.getCells().forEach((c) => {
+                this.converter.handleClose(c.document);
+            });
         }
     }
 
@@ -189,11 +196,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
-        // Mimic a document open
+        // Mimic a document open for all cells
         if (client && notebook.cellCount > 0) {
-            this.didOpen(notebook.cellAt(0).document, (ev) => {
-                const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
-                client.sendNotification(DidOpenTextDocumentNotification.type, params);
+            notebook.getCells().forEach((c) => {
+                this.didOpen(c.document, (ev) => {
+                    const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
+                    client.sendNotification(DidOpenTextDocumentNotification.type, params);
+                });
             });
         }
     }
@@ -204,16 +213,21 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
         // If this is a notebook cell, change this into a concat document event
         if (isNotebookCell(event.document.uri) && client) {
-            // Converter will change to the correct params
-            const params = this.converter.handleChange(event);
-            client.sendNotification(DidChangeTextDocumentNotification.type, params);
+            const sentOpen = this.converter.isOpen(event.document);
+            if (!sentOpen) {
+                // First time opening, send an open instead
+                const newDoc = this.converter.toOutgoingDocument(event.document);
+                const params = client.code2ProtocolConverter.asOpenTextDocumentParams(newDoc);
+                client.sendNotification(DidOpenTextDocumentNotification.type, params);
+            } else {
+                // Converter will change to the correct params
+                const params = this.converter.handleChange(event);
+                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+            }
         }
     }
 
     public didOpen(document: TextDocument, next: (ev: TextDocument) => void): () => void {
-        // Initialize tracing on the first document open
-        this.initializeTracing();
-
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
@@ -221,7 +235,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         if (
             isNotebookCell(document.uri) &&
             this.isDocumentAllowed(document.uri) &&
-            this.notebookApi.notebookDocuments.find((n) => n.uri.fsPath === document.uri.fsPath) &&
+            workspace.notebookDocuments.find((n) => n.uri.fsPath === document.uri.fsPath) &&
             client
         ) {
             const sentOpen = this.converter.isOpen(document);
@@ -844,12 +858,11 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    private initializeTracing() {
-        if (!this.traceDisposable && this.traceInfo) {
-            const client = this.getClient();
-            if (client) {
-                this.traceDisposable = client.onNotification('window/logMessage', this.traceInfo);
-            }
+    private onDidChangeNotebookCells(ev: NotebookCellsChangeEvent) {
+        // Each of these has to be turned into a change event so the underlying concat document
+        // is correct
+        if (this.shouldProvideIntellisense(ev.document.uri)) {
+            console.log(`Did change ${JSON.stringify(ev)}`);
         }
     }
 
