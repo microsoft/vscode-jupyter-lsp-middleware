@@ -27,7 +27,7 @@ suite('concatTextDocument', () => {
 
     test('concat document for notebook', () => {
         withTestNotebook(
-            Uri.parse('test://test.ipynb'),
+            Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
             [
                 [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
                 [['test'], 'markdown', NotebookCellKind.Markup, [], {}],
@@ -35,16 +35,16 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 3);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
-                assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)'].join('\n'));
+                assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', ''].join('\n'));
             }
         );
     });
 
     test('concat document for interactive window', () => {
         withTestNotebook(
-            Uri.parse(`${InteractiveScheme}://test.ipynb`),
+            Uri.from({ scheme: InteractiveScheme, path: 'test.ipynb' }),
             [
                 [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
                 [['test'], 'markdown', NotebookCellKind.Markup, [], {}],
@@ -52,32 +52,35 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const inputDocument = mockTextDocument(
-                    Uri.parse(`${InteractiveInputScheme}://1.interactive`),
+                    Uri.from({ scheme: InteractiveInputScheme, path: '1.interactive' }),
                     'python',
                     ['print("bar")']
                 );
                 const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
-                assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")'].join('\n'));
+                assert.strictEqual(
+                    concat.getText(),
+                    ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', ''].join('\n')
+                );
                 assert.strictEqual(concat.getConcatDocument().lineAt(0).text, 'print(1)');
                 assert.strictEqual(concat.getConcatDocument().lineAt(1).text, 'foo = 2');
                 assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'print(foo)');
                 assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'print("bar")');
 
                 assert.strictEqual(
-                    concat.locationAt(new Position(0, 0)).uri,
-                    notebookDocument.getCells()[0].document.uri
+                    concat.locationAt(new Position(0, 0)).uri.toString(),
+                    notebookDocument.getCells()[0].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.locationAt(new Position(1, 0)).uri,
-                    notebookDocument.getCells()[2].document.uri
+                    concat.locationAt(new Position(1, 0)).uri.toString(),
+                    notebookDocument.getCells()[2].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.locationAt(new Position(2, 0)).uri,
-                    notebookDocument.getCells()[2].document.uri
+                    concat.locationAt(new Position(2, 0)).uri.toString(),
+                    notebookDocument.getCells()[2].document.uri.toString()
                 );
-                assert.strictEqual(concat.locationAt(new Position(3, 0)).uri, inputDocument.uri);
+                assert.strictEqual(concat.locationAt(new Position(3, 0)).uri.toString(), inputDocument.uri.toString());
 
                 assert.deepStrictEqual(
                     concat.positionAt(new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 0))),
@@ -117,7 +120,7 @@ suite('concatTextDocument', () => {
 
     test('concat document for interactive window 2', () => {
         withTestNotebook(
-            Uri.parse(`${InteractiveScheme}://test.ipynb`),
+            Uri.from({ scheme: InteractiveScheme, path: 'test.ipynb' }),
             [
                 [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
                 [['test'], 'markdown', NotebookCellKind.Markup, [], {}],
@@ -125,16 +128,16 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const inputDocument = mockTextDocument(
-                    Uri.parse(`${InteractiveInputScheme}://1.interactive`),
+                    Uri.from({ scheme: InteractiveInputScheme, path: '1.interactive' }),
                     'python',
                     ['print("bar")', 'p.']
                 );
                 const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
-                    ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.'].join('\n')
+                    ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.', ''].join('\n')
                 );
                 assert.strictEqual(concat.getConcatDocument().lineAt(0).text, 'print(1)');
                 assert.strictEqual(concat.getConcatDocument().lineAt(1).text, 'foo = 2');
@@ -148,22 +151,27 @@ suite('concatTextDocument', () => {
     });
 
     test('concat document for interactive window, empty history', () => {
-        withTestNotebook(Uri.parse(`${InteractiveScheme}://test.ipynb`), [], (notebookDocument: NotebookDocument) => {
-            const inputDocument = mockTextDocument(Uri.parse(`${InteractiveInputScheme}://1.interactive`), 'python', [
-                'print("bar")',
-                'p.'
-            ]);
-            const concat = generateWrapper(notebookDocument, [inputDocument]);
-            assert.strictEqual(concat.getConcatDocument().lineCount, 2);
-            // assert.strictEqual(concat.languageId, 'python');
-            // assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.'].join('\n'));
-            // assert.strictEqual(concat.lineAt(0).text, 'print(1)');
-            // assert.strictEqual(concat.lineAt(1).text, 'foo = 2');
-            // assert.strictEqual(concat.lineAt(2).text, 'print(foo)');
-            // assert.strictEqual(concat.lineAt(3).text, 'print("bar")');
-            // assert.strictEqual(concat.lineAt(4).text, 'p.');
+        withTestNotebook(
+            Uri.from({ scheme: InteractiveScheme, path: 'test.ipynb' }),
+            [],
+            (notebookDocument: NotebookDocument) => {
+                const inputDocument = mockTextDocument(
+                    Uri.from({ scheme: InteractiveInputScheme, path: '1.interactive' }),
+                    'python',
+                    ['print("bar")', 'p.']
+                );
+                const concat = generateWrapper(notebookDocument, [inputDocument]);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 3);
+                // assert.strictEqual(concat.languageId, 'python');
+                // assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.'].join('\n'));
+                // assert.strictEqual(concat.lineAt(0).text, 'print(1)');
+                // assert.strictEqual(concat.lineAt(1).text, 'foo = 2');
+                // assert.strictEqual(concat.lineAt(2).text, 'print(foo)');
+                // assert.strictEqual(concat.lineAt(3).text, 'print("bar")');
+                // assert.strictEqual(concat.lineAt(4).text, 'p.');
 
-            assert.deepStrictEqual(concat.locationAt(new Position(1, 2)).range, new Range(1, 2, 1, 2));
-        });
+                assert.deepStrictEqual(concat.locationAt(new Position(1, 2)).range, new Range(1, 2, 1, 2));
+            }
+        );
     });
 });

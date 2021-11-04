@@ -14,9 +14,11 @@ export class NotebookConcatLine implements vscode.TextLine {
         this._range = new vscode.Range(new vscode.Position(_line, 0), new vscode.Position(_line, _contents.length));
         this._rangeWithLineBreak = new vscode.Range(this.range.start, new vscode.Position(_line, _contents.length + 1));
     }
-
     public get offset(): number {
         return this._offset;
+    }
+    public get endOffset(): number {
+        return this._offset + this._contents.length + 1;
     }
     public get lineNumber(): number {
         return this._line;
