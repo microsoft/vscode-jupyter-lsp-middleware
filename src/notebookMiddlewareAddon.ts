@@ -29,7 +29,6 @@ import {
     LinkedEditingRanges,
     Location,
     NotebookDocument,
-    notebooks,
     Position,
     Position as VPosition,
     ProviderResult,
@@ -46,8 +45,7 @@ import {
     TextEdit,
     Uri,
     WorkspaceEdit,
-    workspace,
-    NotebookCellsChangeEvent
+    workspace
 } from 'vscode';
 import {
     ConfigurationParams,
@@ -55,6 +53,7 @@ import {
     DidChangeTextDocumentNotification,
     DidCloseTextDocumentNotification,
     DidOpenTextDocumentNotification,
+    ExecuteCommandSignature,
     HandleDiagnosticsSignature,
     LanguageClient,
     Middleware,
@@ -126,15 +125,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
+        this.executeCommand = this.executeCommand.bind(this);
         this.didOpen = this.didOpen.bind(this);
         this.didSave = this.didSave.bind(this);
         this.didChange = this.didChange.bind(this);
         this.didClose = this.didClose.bind(this);
         this.willSave = this.willSave.bind(this);
         this.willSaveWaitUntil = this.willSaveWaitUntil.bind(this);
-
-        // Since there are no LSP requests for moving cells around, we need to handle this ourselves
-        notebooks.onDidChangeNotebookCells(this.onDidChangeNotebookCells, this, this.disposables);
     }
 
     public workspace = {
@@ -166,6 +163,19 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.disposables.forEach((d) => d.dispose());
         this.disposables = [];
         this.converter.dispose();
+    }
+
+    public executeCommand(command: string, args: any[], next: ExecuteCommandSignature) {
+        const client = this.getClient();
+
+        // Pass onto the server unless this is our special command for handling cell movement (no API in LSP for this yet)
+        if (command === 'notebook.refresh' && client) {
+            // Send this to our converter and then the change notification to the server
+            const params = this.converter.handleRefresh(args[0]);
+            client.sendNotification(DidChangeTextDocumentNotification.type, params);
+        } else {
+            next(command, args);
+        }
     }
 
     public stopWatching(notebook: NotebookDocument): void {
@@ -853,14 +863,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
                 return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter, document.uri));
             }
             return this.converter.toIncomingLinkedEditingRanges(document.uri, result);
-        }
-    }
-
-    private onDidChangeNotebookCells(ev: NotebookCellsChangeEvent) {
-        // Each of these has to be turned into a change event so the underlying concat document
-        // is correct
-        if (this.shouldProvideIntellisense(ev.document.uri)) {
-            console.log(`Did change ${JSON.stringify(ev)}`);
         }
     }
 

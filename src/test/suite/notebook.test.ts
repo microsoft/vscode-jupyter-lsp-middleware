@@ -209,6 +209,33 @@ suite('Notebook tests', function () {
             'System message not found'
         );
     });
+    test('Move cell with variable up and down (and make sure diags appear)', async () => {
+        await insertCodeCell('x = 4');
+        await insertMarkdownCell('# HEADER1');
+        const cell3 = await insertCodeCell('print(x)');
+
+        await focusCell(cell3);
+        let changePromise = waitForCellChange();
+        await commands.executeCommand('notebook.cell.moveUp');
+        await changePromise;
+
+        // Move again
+        const cell2 = window.activeNotebookEditor?.document.cellAt(1)!;
+
+        await focusCell(cell2);
+        changePromise = waitForCellChange();
+        await commands.executeCommand('notebook.cell.moveUp');
+        await changePromise;
+
+        // First cell should have diags now
+        const cell1 = window.activeNotebookEditor?.document.cellAt(0)!;
+        const diagnostics = await waitForDiagnostics(cell1.document.uri);
+        assert.ok(diagnostics, 'Moving variable down should cause diags to show up');
+        assert.ok(
+            diagnostics.find((item) => item.message.includes('x')),
+            'X message not found'
+        );
+    });
     test('Add some errors with markdown and delete some cells', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)');
         await insertMarkdownCell('# HEADER1');

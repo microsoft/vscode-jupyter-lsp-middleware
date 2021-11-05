@@ -108,6 +108,13 @@ export class NotebookConverter implements Disposable {
         return results;
     }
 
+    public handleRefresh(notebook: NotebookDocument) {
+        // Find the wrapper for any of the cells
+        const wrapper =
+            notebook.cellCount > 0 ? this.getTextDocumentWrapper(notebook.getCells()[0].document) : undefined;
+        return wrapper?.handleRefresh(notebook) || [];
+    }
+
     public handleClose(cell: TextDocument) {
         const wrapper = this.getTextDocumentWrapper(cell);
         return wrapper?.handleClose(cell) || [];

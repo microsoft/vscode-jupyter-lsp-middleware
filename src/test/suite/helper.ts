@@ -17,6 +17,7 @@ import {
     ExecuteCommandRegistrationOptions,
     ExecuteCommandRequest,
     LanguageClient,
+    Middleware,
     RegistrationData,
     RegistrationType,
     RevealOutputChannelOn,
@@ -873,6 +874,34 @@ function createMiddleware(
     }
 }
 
+function trackNotebookCellMovement(middleware: Middleware): vscode.Disposable {
+    return vscode.notebooks.onDidChangeNotebookCells((e) => {
+        // Translate notebook cell movement into change events
+        if (middleware.executeCommand) {
+            // If more than one item changed, then a move or a delete of multiple happened. Move
+            // always has a delete and a non delete
+            const deletions = e.changes
+                .filter((i) => i.deletedCount > 0)
+                .map((v) => {
+                    return { start: v.start, uris: v.deletedItems.map((d) => d.document.uri.toString()) };
+                });
+            const adds = e.changes
+                .filter((i) => i.deletedCount <= 0)
+                .map((v) => {
+                    return { start: v.start, uris: v.items.map((d) => d.document.uri.toString()) };
+                });
+            const isMove = adds.length > 0 && deletions.length == adds.length;
+
+            // If adds and deletes are same length, we should have done a move
+            if (isMove) {
+                middleware.executeCommand('notebook.refresh', [e.document], (_c, _args) => {
+                    // Do nothing as we don't need to send this anywhere
+                });
+            }
+        }
+    });
+}
+
 async function startLanguageServer(
     outputChannel: string,
     languageServerFolder: string,
@@ -914,6 +943,9 @@ async function startLanguageServer(
         shouldProvideIntellisense
     );
 
+    // Add custom message handling for notebook cell movement
+    const trackingDisposable = trackNotebookCellMovement(middleware);
+
     // Client options need to include our middleware piece
     const clientOptions: vslc.LanguageClientOptions = {
         documentSelector: selector,
@@ -948,7 +980,7 @@ async function startLanguageServer(
         await languageClient.onReady();
     }
 
-    return new LanguageServer(languageClient, [languageClientDisposable, cancellationStrategy]);
+    return new LanguageServer(languageClient, [languageClientDisposable, cancellationStrategy, trackingDisposable]);
 }
 
 export async function createLanguageServer(

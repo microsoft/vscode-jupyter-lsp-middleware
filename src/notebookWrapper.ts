@@ -70,6 +70,26 @@ export class NotebookWrapper implements vscode.Disposable {
             return result;
         }
     }
+    public handleRefresh(notebook: vscode.NotebookDocument): protocol.DidChangeTextDocumentParams | undefined {
+        if (notebook == this.notebook) {
+            // Convert the notebook into something the concat document can understand (protocol types)
+            return this.concatDocument.handleRefresh({
+                cells: notebook
+                    .getCells()
+                    .filter((c) => score(c.document, this.selector))
+                    .map((c) => {
+                        return {
+                            textDocument: {
+                                uri: c.document.uri.toString(),
+                                version: c.document.version,
+                                languageId: c.document.languageId,
+                                text: c.document.getText()
+                            }
+                        };
+                    })
+            });
+        }
+    }
     public getText(range?: vscode.Range) {
         return this.concatDocument.getText(range);
     }

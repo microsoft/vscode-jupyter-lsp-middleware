@@ -1,5 +1,5 @@
 const fs = require('fs');
-
+console.log('Copying package.json to out folder')
 if (!fs.existsSync('./out')) {
   fs.mkdirSync('./out');
   fs.mkdirSync('./out/test');

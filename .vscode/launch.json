@@ -11,7 +11,7 @@
             "runtimeExecutable": "${execPath}",
             "args": [
                 "${workspaceRoot}/src/test",
-                "--enable-proposed-api=vscode-jupyter-lsp-middleware", // Name of test extension
+                "--enable-proposed-api=ms-vscode.vscode-jupyter-lsp-middleware", // Name of test extension
                 "--extensionDevelopmentPath=${workspaceFolder:vscode-jupyter-lsp-middleware}/out/test", // Location where extension.ts goes
                 "--extensionTestsPath=${workspaceFolder:vscode-jupyter-lsp-middleware}/out/test/suite/index", // Location of test files,
                 "--skip-welcome",
