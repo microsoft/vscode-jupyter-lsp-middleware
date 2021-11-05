@@ -38,7 +38,8 @@ import {
     SemanticTokens,
     SemanticTokensEdits,
     SemanticTokensEdit,
-    LinkedEditingRanges
+    LinkedEditingRanges,
+    workspace
 } from 'vscode';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
 import * as path from 'path';
@@ -885,7 +886,7 @@ export class NotebookConverter implements Disposable {
         const key = NotebookConverter.getDocumentKey(uri);
         let result = this.activeWrappers.get(key);
         if (!result) {
-            const doc = this.api.notebookDocuments.find((n) => this.arePathsSame(uri.fsPath, n.uri.fsPath));
+            const doc = workspace.notebookDocuments.find((n) => this.arePathsSame(uri.fsPath, n.uri.fsPath));
             if (!doc) {
                 throw new Error(`Invalid uri, not a notebook: ${uri.fsPath}`);
             }
