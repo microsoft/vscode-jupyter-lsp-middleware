@@ -8,7 +8,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
-import { IDisposable, IVSCodeNotebook } from '../../common/types';
+import { IDisposable } from '../../common/types';
 import * as vslc from 'vscode-languageclient/node';
 import {
     ClientCapabilities,
@@ -85,24 +85,6 @@ export function mockTextDocument(uri: vscode.Uri, languageId: string, source: st
         }
     })();
 }
-
-const notebookApi: IVSCodeNotebook = new (class implements IVSCodeNotebook {
-    public get onDidOpenNotebookDocument(): vscode.Event<vscode.NotebookDocument> {
-        return vscode.workspace.onDidOpenNotebookDocument;
-    }
-    public get onDidCloseNotebookDocument(): vscode.Event<vscode.NotebookDocument> {
-        return vscode.workspace.onDidCloseNotebookDocument;
-    }
-    public get notebookDocuments(): ReadonlyArray<vscode.NotebookDocument> {
-        return vscode.workspace.notebookDocuments;
-    }
-    public createConcatTextDocument(
-        doc: vscode.NotebookDocument,
-        selector?: vscode.DocumentSelector
-    ): vscode.NotebookConcatTextDocument {
-        return vscode.notebooks.createConcatTextDocument(doc, selector) as any;
-    }
-})();
 
 export function withTestNotebook(
     uri: vscode.Uri,
@@ -875,11 +857,9 @@ export type MiddlewareType = 'pylance' | 'hiding' | 'notebook';
 
 function createMiddleware(
     middlewareType: MiddlewareType,
-    notebookApi: IVSCodeNotebook,
     getClient: () => LanguageClient | undefined,
     traceInfo: (...args: any[]) => void,
     cellSelector: DocumentSelector,
-    notebookFileRegex: RegExp,
     pythonPath: string,
     isDocumentAllowed: (uri: vscode.Uri) => boolean
 ) {
@@ -889,15 +869,7 @@ function createMiddleware(
         case 'pylance':
             return createPylanceMiddleware(getClient, pythonPath, isDocumentAllowed);
         case 'notebook':
-            return createNotebookMiddleware(
-                notebookApi,
-                getClient,
-                traceInfo,
-                cellSelector,
-                notebookFileRegex,
-                pythonPath,
-                isDocumentAllowed
-            );
+            return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed);
     }
 }
 
@@ -935,11 +907,9 @@ async function startLanguageServer(
 
     const middleware = createMiddleware(
         middlewareType,
-        notebookApi,
         () => languageClient,
         traceInfo,
         selector,
-        /.*\.(ipynb|interactive)/m,
         pythonPath,
         shouldProvideIntellisense
     );

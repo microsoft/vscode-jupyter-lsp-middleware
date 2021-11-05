@@ -83,7 +83,6 @@ import {
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { IVSCodeNotebook } from './common/types';
 import { isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
@@ -105,7 +104,6 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
-import { getVSCodeDownloadUrl } from 'vscode-test/out/util';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
