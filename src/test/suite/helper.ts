@@ -878,26 +878,13 @@ function trackNotebookCellMovement(middleware: Middleware): vscode.Disposable {
     return vscode.notebooks.onDidChangeNotebookCells((e) => {
         // Translate notebook cell movement into change events
         if (middleware.executeCommand) {
-            // If more than one item changed, then a move or a delete of multiple happened. Move
-            // always has a delete and a non delete
-            const deletions = e.changes
-                .filter((i) => i.deletedCount > 0)
-                .map((v) => {
-                    return { start: v.start, uris: v.deletedItems.map((d) => d.document.uri.toString()) };
-                });
-            const adds = e.changes
-                .filter((i) => i.deletedCount <= 0)
-                .map((v) => {
-                    return { start: v.start, uris: v.items.map((d) => d.document.uri.toString()) };
-                });
-            const isMove = adds.length > 0 && deletions.length == adds.length;
-
-            // If adds and deletes are same length, we should have done a move
-            if (isMove) {
-                middleware.executeCommand('notebook.refresh', [e.document], (_c, _args) => {
-                    // Do nothing as we don't need to send this anywhere
-                });
-            }
+            // All of these are a refresh. 
+            // Add in the middle, LSP can't figure out where to put it. We have to refresh
+            // Delete in the middle can probably be handled with a close
+            // Move, LSP can't figure out where to move stuff (especially if not all cells are in the LSP)
+            middleware.executeCommand('notebook.refresh', [e.document], (_c, _args) => {
+                // Do nothing as we don't need to send this anywhere
+            });
         }
     });
 }

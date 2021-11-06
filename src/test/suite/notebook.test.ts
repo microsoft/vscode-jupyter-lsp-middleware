@@ -266,4 +266,7 @@ suite('Notebook tests', function () {
         const diagnostics = languages.getDiagnostics(cell3.document.uri);
         assert.isEmpty(diagnostics, `No diagnostics should be found in the third cell ${JSON.stringify(diagnostics)}`);
     });
+
+    // TODO:
+    // Delete a cell and make sure diags show up and that cells afterwards are okay
 });

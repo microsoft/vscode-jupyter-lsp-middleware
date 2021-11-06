@@ -103,6 +103,27 @@ suite('concatTextDocument', () => {
         );
     });
 
+    test('refresh (move) concat document for notebook', () => {
+        withTestNotebook(
+            Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
+            [
+                [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
+                [['test'], 'markdown', NotebookCellKind.Markup, [], {}],
+                [['foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
+            ],
+            (notebookDocument: NotebookDocument) => {
+                const concat = generateWrapper(notebookDocument);
+                assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', ''].join('\n'));
+                const firstCell = notebookDocument.getCells()[0];
+                const lastCell = notebookDocument.getCells()[2];
+                notebookDocument.getCells().splice(0, 1, lastCell);
+                notebookDocument.getCells().splice(2, 1, firstCell);
+                concat.handleRefresh(notebookDocument);
+                assert.strictEqual(concat.getText(), ['foo = 2', 'print(foo)', 'print(1)', ''].join('\n'));
+            }
+        );
+    });
+
     test('concat document for interactive window', () => {
         withTestNotebook(
             Uri.from({ scheme: InteractiveScheme, path: 'test.ipynb' }),
