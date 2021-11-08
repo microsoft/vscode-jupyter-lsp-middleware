@@ -309,13 +309,13 @@ export class NotebookConverter implements Disposable {
         if (!highlight) {
             return undefined;
         }
-        const concat = this.getConcatDocument(cell);
-        if (!concat) {
+        const wrapper = this.getTextDocumentWrapper(cell);
+        if (!wrapper) {
             return undefined;
         }
         const result: DocumentHighlight[] = [];
         for (let h of highlight) {
-            const loc = concat.locationAt(h.range);
+            const loc = wrapper.locationAt(h.range);
             if (loc.uri.toString() === cell.uri.toString()) {
                 result.push({ ...h, range: loc.range });
             }
@@ -388,17 +388,17 @@ export class NotebookConverter implements Disposable {
         rangeOrRename:
             | Range
             | {
-                range: Range;
-                placeholder: string;
-            }
+                  range: Range;
+                  placeholder: string;
+              }
             | null
             | undefined
     ):
         | Range
         | {
-            range: Range;
-            placeholder: string;
-        }
+              range: Range;
+              placeholder: string;
+          }
         | undefined {
         if (rangeOrRename) {
             if (rangeOrRename instanceof Range) {

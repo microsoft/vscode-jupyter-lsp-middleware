@@ -13,7 +13,8 @@ import {
     Range,
     WorkspaceEdit,
     workspace,
-    Uri
+    Uri,
+    DocumentHighlight
 } from 'vscode';
 import { DocumentFilter } from 'vscode-languageserver-protocol';
 import {
@@ -31,7 +32,9 @@ import {
     captureScreenShot,
     captureOutputMessages,
     LanguageServer,
-    sleep
+    sleep,
+    waitForCondition,
+    defaultNotebookTestTimeout
 } from './helper';
 
 export const PYTHON_LANGUAGE = 'python';
@@ -280,5 +283,31 @@ suite('Notebook tests', function () {
         codeCell = window.activeNotebookEditor?.document.cellAt(1)!;
         diagnostics = await waitForDiagnostics(codeCell.document.uri);
         assert.isNotEmpty(diagnostics, 'Deleting sys should create diagnostics');
+    });
+    test('Document highlights', async () => {
+        await insertCodeCell('import sys');
+        let codeCell = await insertCodeCell('print(sys.executable)');
+
+        let highlights: DocumentHighlight[] = [];
+        await waitForCondition(
+            async () => {
+                highlights = (await commands.executeCommand(
+                    'vscode.executeDocumentHighlights',
+                    codeCell.document.uri,
+                    new Position(0, 7)
+                )) as DocumentHighlight[];
+                return highlights && highlights.length > 0;
+            },
+            defaultNotebookTestTimeout,
+            `No highlights found for sys`
+        );
+
+        // Highlights should be just for this cell
+        assert.isNotEmpty(highlights, `No highlights found`);
+        assert.equal(highlights.length, 1, `Wrong number of highlights found`);
+        assert.ok(
+            highlights.find((item) => item.range.start.line == 0 && item.range.start.character == 6),
+            `Wrong range found for highlight`
+        );
     });
 });
