@@ -207,35 +207,41 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             const from = new vscode.Position(0, 0);
             const to = this.positionAt(this._contents.length);
             const oldLength = this._contents.length;
-
-            this._cellRanges = [];
-            this._contents = `${e.cells.map((c) => c.textDocument.text).join('\n')}\n`;
-            this._lines = this.createLines();
-            let startOffset = 0;
-            e.cells.forEach((c) => {
-                const cellUri = vscode.Uri.parse(c.textDocument.uri);
-                this._cellRanges.push({
-                    uri: cellUri,
-                    startOffset,
-                    startLine: this._lines.find((l) => l.offset === startOffset)?.lineNumber || 0,
-                    fragment:
-                        cellUri.scheme === InteractiveInputScheme ? -1 : parseInt(cellUri.fragment.substring(2) || '0'),
-                    endOffset: c.textDocument.text.length + 1 // Account for \n between cells
+            const oldContents = this._contents;
+            const newContents = `${e.cells.map((c) => c.textDocument.text).join('\n')}\n`;
+            if (newContents != oldContents) {
+                this._version++;
+                this._cellRanges = [];
+                this._contents = newContents;
+                this._lines = this.createLines();
+                let startOffset = 0;
+                e.cells.forEach((c) => {
+                    const cellUri = vscode.Uri.parse(c.textDocument.uri);
+                    this._cellRanges.push({
+                        uri: cellUri,
+                        startOffset,
+                        startLine: this._lines.find((l) => l.offset === startOffset)?.lineNumber || 0,
+                        fragment:
+                            cellUri.scheme === InteractiveInputScheme
+                                ? -1
+                                : parseInt(cellUri.fragment.substring(2) || '0'),
+                        endOffset: startOffset + c.textDocument.text.length + 1 // Account for \n between cells
+                    });
+                    startOffset = this._cellRanges[this._cellRanges.length - 1].endOffset;
                 });
-                startOffset = this._cellRanges[this._cellRanges.length - 1].endOffset;
-            });
 
-            // Create one big change
-            const changes: protocol.TextDocumentContentChangeEvent[] = [
-                {
-                    range: this.createSerializableRange(from, to),
-                    rangeOffset: 0,
-                    rangeLength: oldLength,
-                    text: this._contents
-                } as any
-            ];
+                // Create one big change
+                const changes: protocol.TextDocumentContentChangeEvent[] = [
+                    {
+                        range: this.createSerializableRange(from, to),
+                        rangeOffset: 0,
+                        rangeLength: oldLength,
+                        text: this._contents
+                    } as any
+                ];
 
-            return this.toDidChangeTextDocumentParams(changes);
+                return this.toDidChangeTextDocumentParams(changes);
+            }
         }
         return undefined;
     }

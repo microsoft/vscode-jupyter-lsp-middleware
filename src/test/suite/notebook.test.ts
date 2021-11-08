@@ -266,7 +266,19 @@ suite('Notebook tests', function () {
         const diagnostics = languages.getDiagnostics(cell3.document.uri);
         assert.isEmpty(diagnostics, `No diagnostics should be found in the third cell ${JSON.stringify(diagnostics)}`);
     });
+    test('Delete a cell with a variable in it', async () => {
+        await insertCodeCell('import sys');
+        await insertMarkdownCell('# HEADER1');
+        let codeCell = await insertCodeCell('print(sys.executable)');
+        await insertMarkdownCell('# HEADER2');
 
-    // TODO:
-    // Delete a cell and make sure diags show up and that cells afterwards are okay
+        // Need to sleep because diagnostics that are empty cannot be waited for as they're the default
+        await sleep(1000);
+        let diagnostics = languages.getDiagnostics(codeCell.document.uri);
+        assert.isEmpty(diagnostics, `No diagnostics should be found`);
+        await deleteCell(0);
+        codeCell = window.activeNotebookEditor?.document.cellAt(1)!;
+        diagnostics = await waitForDiagnostics(codeCell.document.uri);
+        assert.isNotEmpty(diagnostics, 'Deleting sys should create diagnostics');
+    });
 });
