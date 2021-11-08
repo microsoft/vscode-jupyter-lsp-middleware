@@ -11,6 +11,7 @@ export type NotebookMiddleware = Middleware &
     Disposable & {
         stopWatching(notebook: NotebookDocument): void;
         startWatching(notebook: NotebookDocument): void;
+        refresh(notebook: NotebookDocument): void;
     };
 
 export function createHidingMiddleware(): Middleware & Disposable {
@@ -32,10 +33,11 @@ export function createNotebookMiddleware(
 
 export function createPylanceMiddleware(
     getClient: () => LanguageClient | undefined,
+    cellSelector: DocumentSelector,
     pythonPath: string,
     isDocumentAllowed: (uri: Uri) => boolean
 ): NotebookMiddleware {
     // LanguageClients are created per interpreter (as they start) with a selector for all notebooks
     // Middleware swallows all requests for notebooks that don't match itself (isDocumentAllowed returns false)
-    return new PylanceMiddlewareAddon(getClient, pythonPath, isDocumentAllowed);
+    return new PylanceMiddlewareAddon(getClient, cellSelector, pythonPath, isDocumentAllowed);
 }

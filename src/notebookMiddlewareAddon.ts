@@ -53,7 +53,6 @@ import {
     DidChangeTextDocumentNotification,
     DidCloseTextDocumentNotification,
     DidOpenTextDocumentNotification,
-    ExecuteCommandSignature,
     HandleDiagnosticsSignature,
     LanguageClient,
     Middleware,
@@ -125,7 +124,6 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
-        this.executeCommand = this.executeCommand.bind(this);
         this.didOpen = this.didOpen.bind(this);
         this.didSave = this.didSave.bind(this);
         this.didChange = this.didChange.bind(this);
@@ -165,16 +163,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.converter.dispose();
     }
 
-    public executeCommand(command: string, args: any[], next: ExecuteCommandSignature) {
+    public refresh(notebook: NotebookDocument) {
         const client = this.getClient();
 
-        // Pass onto the server unless this is our special command for handling cell movement (no API in LSP for this yet)
-        if (command === 'notebook.refresh' && client) {
+        // Turn this into a change notification
+        if (client) {
             // Send this to our converter and then the change notification to the server
-            const params = this.converter.handleRefresh(args[0]);
+            const params = this.converter.handleRefresh(notebook);
             client.sendNotification(DidChangeTextDocumentNotification.type, params);
-        } else {
-            next(command, args);
         }
     }
 

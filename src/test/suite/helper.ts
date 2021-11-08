@@ -17,14 +17,13 @@ import {
     ExecuteCommandRegistrationOptions,
     ExecuteCommandRequest,
     LanguageClient,
-    Middleware,
     RegistrationData,
     RegistrationType,
     RevealOutputChannelOn,
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware } from '../..';
+import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware, NotebookMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 import { NotebookWrapper } from '../../notebookWrapper';
@@ -868,24 +867,16 @@ function createMiddleware(
         case 'hiding':
             return createHidingMiddleware();
         case 'pylance':
-            return createPylanceMiddleware(getClient, pythonPath, isDocumentAllowed);
+            return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed);
         case 'notebook':
             return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed);
     }
 }
 
-function trackNotebookCellMovement(middleware: Middleware): vscode.Disposable {
+function trackNotebookCellMovement(middleware: NotebookMiddleware): vscode.Disposable {
     return vscode.notebooks.onDidChangeNotebookCells((e) => {
-        // Translate notebook cell movement into change events
-        if (middleware.executeCommand) {
-            // All of these are a refresh. 
-            // Add in the middle, LSP can't figure out where to put it. We have to refresh
-            // Delete in the middle can probably be handled with a close
-            // Move, LSP can't figure out where to move stuff (especially if not all cells are in the LSP)
-            middleware.executeCommand('notebook.refresh', [e.document], (_c, _args) => {
-                // Do nothing as we don't need to send this anywhere
-            });
-        }
+        // Translate notebook cell movement into refresh events
+        middleware.refresh(e.document);
     });
 }
 
@@ -931,7 +922,10 @@ async function startLanguageServer(
     );
 
     // Add custom message handling for notebook cell movement
-    const trackingDisposable = trackNotebookCellMovement(middleware);
+    const trackingDisposable =
+        middlewareType != 'hiding'
+            ? trackNotebookCellMovement(middleware as NotebookMiddleware)
+            : { dispose: () => {} };
 
     // Client options need to include our middleware piece
     const clientOptions: vslc.LanguageClientOptions = {
