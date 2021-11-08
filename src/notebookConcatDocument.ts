@@ -367,58 +367,6 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         };
     }
 
-    // TODO: How to handle moving of cells.
-    public swap(_first: string, _second: string): protocol.TextDocumentContentChangeEvent[] {
-        let change: protocol.TextDocumentContentChangeEvent[] = [];
-
-        // const firstIndex = this._cellRanges.findIndex((c) => c.id === first);
-        // const secondIndex = this._cellRanges.findIndex((c) => c.id === second);
-        // if (firstIndex >= 0 && secondIndex >= 0 && firstIndex !== secondIndex && this.inEditMode) {
-        //     this._version += 1;
-
-        //     const topIndex = firstIndex < secondIndex ? firstIndex : secondIndex;
-        //     const bottomIndex = firstIndex > secondIndex ? firstIndex : secondIndex;
-        //     const top = { ...this._cellRanges[topIndex] };
-        //     const bottom = { ...this._cellRanges[bottomIndex] };
-
-        //     const from = new Position(this.getLineFromOffset(top.start), 0);
-        //     const to = this.positionAt(bottom.currentEnd);
-
-        //     // Swap everything
-        //     this._cellRanges[topIndex].id = bottom.id;
-        //     this._cellRanges[topIndex].fullEnd = top.start + (bottom.fullEnd - bottom.start);
-        //     this._cellRanges[topIndex].currentEnd = top.start + (bottom.currentEnd - bottom.start);
-        //     this._cellRanges[bottomIndex].id = top.id;
-        //     this._cellRanges[bottomIndex].start = this._cellRanges[topIndex].fullEnd;
-        //     this._cellRanges[bottomIndex].fullEnd = this._cellRanges[topIndex].fullEnd + (top.fullEnd - top.start);
-        //     this._cellRanges[bottomIndex].currentEnd =
-        //         this._cellRanges[topIndex].fullEnd + (top.currentEnd - top.start);
-
-        //     const fromOffset = this.convertToOffset(from);
-        //     const toOffset = this.convertToOffset(to);
-
-        //     // Recreate our contents, and then recompute all of our lines
-        //     const before = this._contents.substring(0, fromOffset);
-        //     const topText = this._contents.substring(top.start, top.fullEnd - top.start);
-        //     const bottomText = this._contents.substring(bottom.start, bottom.fullEnd - bottom.start);
-        //     const after = this._contents.substring(toOffset);
-        //     const replacement = `${bottomText}${topText}`;
-        //     this._contents = `${before}${replacement}${after}`;
-        //     this._lines = this.createLines();
-
-        //     // Change is a full replacement
-        //     change = [
-        //         {
-        //             range: this.createSerializableRange(from, to),
-        //             rangeLength: toOffset - fromOffset,
-        //             text: replacement
-        //         }
-        //     ];
-        // }
-
-        return change;
-    }
-
     private toDidChangeTextDocumentParams(
         changes: protocol.TextDocumentContentChangeEvent[]
     ): protocol.DidChangeTextDocumentParams {
