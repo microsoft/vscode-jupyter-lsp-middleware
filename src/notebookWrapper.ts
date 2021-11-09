@@ -108,4 +108,10 @@ export class NotebookWrapper implements vscode.Disposable {
     public contains(cellUri: vscode.Uri) {
         return this.concatDocument.contains(cellUri);
     }
+    public rangeOf(cellUri: vscode.Uri) {
+        const cell = this.notebook.getCells().find((c) => c.document.uri.toString() === cellUri.toString())?.document;
+        if (cell && score(cell, this.selector)) {
+            return this.concatDocument.rangeOf(cellUri);
+        }
+    }
 }

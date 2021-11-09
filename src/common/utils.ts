@@ -3,6 +3,7 @@
 
 import { DocumentSelector, languages, TextDocument, Uri } from 'vscode';
 
+export const NotebookScheme = 'vscode-notebook';
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
 export const InteractiveScheme = 'vscode-interactive';

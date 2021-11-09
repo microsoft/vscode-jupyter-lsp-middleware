@@ -5,8 +5,15 @@
 import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
-import * as uuid from 'uuid/v4';
-import { InteractiveInputScheme, NotebookCellScheme, PYTHON_LANGUAGE, splitLines } from './common/utils';
+import * as hashjs from 'hash.js';
+import {
+    InteractiveInputScheme,
+    InteractiveScheme,
+    NotebookCellScheme,
+    NotebookScheme,
+    PYTHON_LANGUAGE,
+    splitLines
+} from './common/utils';
 import {
     DefaultWordPattern,
     ensureValidWordDefinition,
@@ -91,19 +98,20 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return this.toDidChangeTextDocumentParams(changes);
     }
 
-    public handleOpen(e: protocol.TextDocumentItem): protocol.DidChangeTextDocumentParams {
-        this._version = Math.max(e.version, this._version + 1);
-        this._closed = false;
+    public handleOpen(e: protocol.TextDocumentItem): protocol.DidChangeTextDocumentParams | undefined {
         const cellUri = vscode.Uri.parse(e.uri);
 
-        // Setup uri and such if first open
-        if (this._cellRanges.length == 0) {
-            this._interactiveWindow = cellUri.scheme !== NotebookCellScheme;
-            const dir = path.dirname(cellUri.fsPath);
-            const concatFilePath = path.join(dir, `${NotebookConcatPrefix}${uuid().replace(/-/g, '')}.py`);
-            this._concatUri = vscode.Uri.file(concatFilePath);
-            this._notebookUri = vscode.Uri.parse(`vscode-notebook://${cellUri.fsPath}`);
+        // Make sure we don't already have this cell open
+        if (this._cellRanges.find((c) => c.uri.toString() == e.uri)) {
+            // Can't open twice
+            return undefined;
         }
+
+        this._version = Math.max(e.version, this._version + 1);
+        this._closed = false;
+
+        // Setup uri and such if first open
+        this.initialize(cellUri);
 
         // Make sure to put a newline between this code and the next code
         const newCode = `${e.text.replace(/\r/g, '')}\n`;
@@ -159,6 +167,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     public handleClose(e: protocol.TextDocumentIdentifier): protocol.DidChangeTextDocumentParams {
         let changes: protocol.TextDocumentContentChangeEvent[] = [];
         const index = this._cellRanges.findIndex((c) => c.uri.toString() === e.uri);
+
+        // Setup uri and such if a reopen.
+        this.initialize(vscode.Uri.parse(e.uri));
 
         // Ignore unless in notebook mode. For interactive, cells are still there.
         if (index >= 0 && !this._interactiveWindow) {
@@ -281,6 +292,14 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             ch = offsetOrPosition - this._lines[line].offset;
         }
         return new vscode.Position(line, ch);
+    }
+    public rangeOf(cellUri: vscode.Uri) {
+        const range = this._cellRanges.find((c) => c.uri.toString() === cellUri.toString());
+        if (range) {
+            const startPosition = this.positionAt(range.startOffset);
+            const endPosition = this.positionAt(range.endOffset);
+            return new vscode.Range(startPosition, endPosition);
+        }
     }
     public getText(range?: vscode.Range | undefined): string {
         if (!range) {
@@ -503,5 +522,22 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const index =
             fragment == -1 ? this._cellRanges.length : this._cellRanges.findIndex((c) => c.fragment > fragment);
         return index < 0 ? this._cellRanges.length : index;
+    }
+
+    private initialize(cellUri: vscode.Uri) {
+        if (!this._concatUri?.fsPath) {
+            this._interactiveWindow = cellUri.scheme !== NotebookCellScheme;
+            const dir = path.dirname(cellUri.fsPath);
+
+            // Path has to match no matter how many times we open it.
+            const concatFilePath = path.join(
+                dir,
+                `${NotebookConcatPrefix}${hashjs.sha1().update(cellUri.fsPath).digest('hex').substring(0, 12)}.py`
+            );
+            this._concatUri = vscode.Uri.file(concatFilePath);
+            this._notebookUri = vscode.Uri.parse(
+                `${this._interactiveWindow ? InteractiveScheme : NotebookScheme}://${cellUri.fsPath}`
+            );
+        }
     }
 }

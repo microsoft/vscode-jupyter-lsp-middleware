@@ -232,16 +232,8 @@ export class NotebookConverter implements Disposable {
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-            const notebook = this.getNotebookDocument(cell);
-            const cellDocument =
-                cell instanceof Uri ? notebook?.getCells().find((c) => c.document.uri == uri)?.document : cell;
-            const start = cellRange ? cellRange.start : new Position(0, 0);
-            const end = cellRange
-                ? cellRange.end
-                : cellDocument?.lineAt(cellDocument.lineCount - 1).range.end || new Position(0, 0);
-            const startPos = wrapper.positionAt(new Location(uri, start));
-            const endPos = wrapper.positionAt(new Location(uri, end));
-            return new Range(startPos, endPos);
+            const range = wrapper.rangeOf(uri);
+            return range || cellRange || new Range(new Position(0, 0), new Position(0, 0));
         }
         return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
@@ -920,14 +912,5 @@ export class NotebookConverter implements Disposable {
             return false;
         }
         return true;
-    }
-
-    private getNotebookDocument(cell: TextDocument | Uri): NotebookDocument | undefined {
-        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-        const key = NotebookConverter.getDocumentKey(uri);
-        let result = this.activeWrappers.get(key);
-        if (result) {
-            return result.notebook;
-        }
     }
 }

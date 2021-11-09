@@ -19,6 +19,7 @@
     "author": "Visual Studio Code Team",
     "license": "MIT",
     "dependencies": {
+        "hashjs": "^1.2.0",
         "vscode-languageclient": "7.0.0"
     },
     "devDependencies": {

@@ -167,10 +167,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         const client = this.getClient();
 
         // Turn this into a change notification
-        if (client) {
-            // Send this to our converter and then the change notification to the server
-            const params = this.converter.handleRefresh(notebook);
-            client.sendNotification(DidChangeTextDocumentNotification.type, params);
+        if (client && notebook.cellCount > 0) {
+            // Make sure still open.
+            const isOpen = this.converter.isOpen(notebook.cellAt(0).document);
+            if (isOpen) {
+                // Send this to our converter and then the change notification to the server
+                const params = this.converter.handleRefresh(notebook);
+                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+            }
         }
     }
 
@@ -266,13 +270,15 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
         if (isNotebookCell(document.uri) && client) {
+            // Track if this is the message that closes the whole thing.
+            const wasOpen = this.converter.isOpen(document);
             const params = this.converter.handleClose(document);
             const isClosed = !this.converter.isOpen(document);
-            if (isClosed) {
+            if (isClosed && wasOpen) {
                 // All cells deleted, send a close notification
                 const newDoc = this.converter.toOutgoingDocument(document);
                 next(newDoc);
-            } else {
+            } else if (!isClosed) {
                 // Otherwise we changed the document by deleting cells.
                 client.sendNotification(DidChangeTextDocumentNotification.type, params);
             }
