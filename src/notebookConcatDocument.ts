@@ -6,14 +6,7 @@ import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
 import * as shajs from 'sha.js';
-import {
-    InteractiveInputScheme,
-    InteractiveScheme,
-    NotebookCellScheme,
-    NotebookScheme,
-    PYTHON_LANGUAGE,
-    splitLines
-} from './common/utils';
+import { InteractiveInputScheme, InteractiveScheme, NotebookScheme, PYTHON_LANGUAGE, splitLines } from './common/utils';
 import {
     DefaultWordPattern,
     ensureValidWordDefinition,
@@ -217,14 +210,16 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             const to = this.positionAt(this._contents.length);
             const oldLength = this._contents.length;
             const oldContents = this._contents;
-            const newContents = `${e.cells.map((c) => c.textDocument.text).join('\n')}\n`;
+            const normalizedCellText = e.cells.map((c) => c.textDocument.text.replace(/\r/g, ''));
+            const newContents = `${normalizedCellText.join('\n')}\n`;
             if (newContents != oldContents) {
                 this._version++;
                 this._cellRanges = [];
                 this._contents = newContents;
                 this._lines = this.createLines();
                 let startOffset = 0;
-                e.cells.forEach((c) => {
+                e.cells.forEach((c, i) => {
+                    const cellText = normalizedCellText[i];
                     const cellUri = vscode.Uri.parse(c.textDocument.uri);
                     this._cellRanges.push({
                         uri: cellUri,
@@ -234,7 +229,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                             cellUri.scheme === InteractiveInputScheme
                                 ? -1
                                 : parseInt(cellUri.fragment.substring(2) || '0'),
-                        endOffset: startOffset + c.textDocument.text.length + 1 // Account for \n between cells
+                        endOffset: startOffset + cellText.length + 1 // Account for \n between cells
                     });
                     startOffset = this._cellRanges[this._cellRanges.length - 1].endOffset;
                 });
@@ -524,7 +519,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private initialize(cellUri: vscode.Uri) {
         if (!this._concatUri?.fsPath) {
-            this._interactiveWindow = cellUri.scheme !== NotebookCellScheme;
+            this._interactiveWindow = cellUri.fragment.includes(InteractiveScheme);
             const dir = path.dirname(cellUri.fsPath);
 
             // Path has to match no matter how many times we open it.

@@ -222,17 +222,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // If this is a notebook cell, change this into a concat document event
         if (isNotebookCell(event.document.uri) && client) {
             const sentOpen = this.converter.isOpen(event.document);
+            const params = this.converter.handleChange(event);
             if (!sentOpen) {
                 // First time opening, send an open instead
                 const newDoc = this.converter.toOutgoingDocument(event.document);
                 const params = client.code2ProtocolConverter.asOpenTextDocumentParams(newDoc);
                 client.sendNotification(DidOpenTextDocumentNotification.type, params);
-            } else {
-                // Converter will change to the correct params
-                const params = this.converter.handleChange(event);
-                if (params) {
-                    client.sendNotification(DidChangeTextDocumentNotification.type, params);
-                }
+            } else if (params) {
+                client.sendNotification(DidChangeTextDocumentNotification.type, params);
             }
         }
     }
@@ -595,7 +592,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
         const incomingUri = this.converter.toIncomingUri(uri);
-        if (incomingUri && incomingUri != uri && this.shouldProvideIntellisense(incomingUri)) {
+        if (
+            incomingUri &&
+            incomingUri != uri &&
+            this.shouldProvideIntellisense(incomingUri) &&
+            !incomingUri.toString().includes('nteractive') // Skip diagnostics on the interactive window. Not particularly useful
+        ) {
             // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
             // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
             // Otherwise old messages for cells that didn't change this time won't go away.
