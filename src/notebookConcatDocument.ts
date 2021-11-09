@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
-import * as hashjs from 'hash.js';
+import * as shajs from 'sha.js';
 import {
     InteractiveInputScheme,
     InteractiveScheme,
@@ -532,7 +532,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             // Path has to match no matter how many times we open it.
             const concatFilePath = path.join(
                 dir,
-                `${NotebookConcatPrefix}${hashjs.sha1().update(cellUri.fsPath).digest('hex').substring(0, 12)}.py`
+                `${NotebookConcatPrefix}${shajs('sha1').update(cellUri.fsPath).digest('hex').substring(0, 12)}.py`
             );
             this._concatUri = vscode.Uri.file(concatFilePath);
             this._notebookUri = vscode.Uri.parse(

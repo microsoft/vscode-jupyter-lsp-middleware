@@ -19,7 +19,7 @@
     "author": "Visual Studio Code Team",
     "license": "MIT",
     "dependencies": {
-        "hashjs": "^1.2.0",
+        "sha.js": "^2.4.11",
         "vscode-languageclient": "7.0.0"
     },
     "devDependencies": {
@@ -28,6 +28,7 @@
         "@types/glob": "^7.1.1",
         "@types/mocha": "^8.2.3",
         "@types/node": "^12.19.12",
+        "@types/sha.js": "^2.4.0",
         "@types/sinon": "^10.0.2",
         "@types/tmp": "^0.2.1",
         "@types/uuid": "^3.4.3",
