@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { TextDocument, Uri } from 'vscode';
+import { DocumentSelector, languages, TextDocument, Uri } from 'vscode';
 
+export const NotebookScheme = 'vscode-notebook';
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
 export const InteractiveScheme = 'vscode-interactive';
@@ -51,4 +52,8 @@ export function splitLines(
         lines = lines.filter((line) => line.length > 0);
     }
     return lines;
+}
+
+export function score(document: TextDocument, selector: DocumentSelector): number {
+    return languages.match(selector, document);
 }

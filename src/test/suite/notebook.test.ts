@@ -13,7 +13,8 @@ import {
     Range,
     WorkspaceEdit,
     workspace,
-    Uri
+    Uri,
+    DocumentHighlight
 } from 'vscode';
 import { DocumentFilter } from 'vscode-languageserver-protocol';
 import {
@@ -31,7 +32,9 @@ import {
     captureScreenShot,
     captureOutputMessages,
     LanguageServer,
-    sleep
+    sleep,
+    waitForCondition,
+    defaultNotebookTestTimeout
 } from './helper';
 
 export const PYTHON_LANGUAGE = 'python';
@@ -209,6 +212,33 @@ suite('Notebook tests', function () {
             'System message not found'
         );
     });
+    test('Move cell with variable up and down (and make sure diags appear)', async () => {
+        await insertCodeCell('x = 4');
+        await insertMarkdownCell('# HEADER1');
+        const cell3 = await insertCodeCell('print(x)');
+
+        await focusCell(cell3);
+        let changePromise = waitForCellChange();
+        await commands.executeCommand('notebook.cell.moveUp');
+        await changePromise;
+
+        // Move again
+        const cell2 = window.activeNotebookEditor?.document.cellAt(1)!;
+
+        await focusCell(cell2);
+        changePromise = waitForCellChange();
+        await commands.executeCommand('notebook.cell.moveUp');
+        await changePromise;
+
+        // First cell should have diags now
+        const cell1 = window.activeNotebookEditor?.document.cellAt(0)!;
+        const diagnostics = await waitForDiagnostics(cell1.document.uri);
+        assert.ok(diagnostics, 'Moving variable down should cause diags to show up');
+        assert.ok(
+            diagnostics.find((item) => item.message.includes('x')),
+            'X message not found'
+        );
+    });
     test('Add some errors with markdown and delete some cells', async () => {
         await insertCodeCell('import sys\nprint(sys.executable)');
         await insertMarkdownCell('# HEADER1');
@@ -238,5 +268,46 @@ suite('Notebook tests', function () {
         await sleep(3000); // Give some time for diag to show up
         const diagnostics = languages.getDiagnostics(cell3.document.uri);
         assert.isEmpty(diagnostics, `No diagnostics should be found in the third cell ${JSON.stringify(diagnostics)}`);
+    });
+    test('Delete a cell with a variable in it', async () => {
+        await insertCodeCell('import sys');
+        await insertMarkdownCell('# HEADER1');
+        let codeCell = await insertCodeCell('print(sys.executable)');
+        await insertMarkdownCell('# HEADER2');
+
+        // Need to sleep because diagnostics that are empty cannot be waited for as they're the default
+        await sleep(1000);
+        let diagnostics = languages.getDiagnostics(codeCell.document.uri);
+        assert.isEmpty(diagnostics, `No diagnostics should be found`);
+        await deleteCell(0);
+        codeCell = window.activeNotebookEditor?.document.cellAt(1)!;
+        diagnostics = await waitForDiagnostics(codeCell.document.uri);
+        assert.isNotEmpty(diagnostics, 'Deleting sys should create diagnostics');
+    });
+    test('Document highlights', async () => {
+        await insertCodeCell('import sys');
+        let codeCell = await insertCodeCell('print(sys.executable)');
+
+        let highlights: DocumentHighlight[] = [];
+        await waitForCondition(
+            async () => {
+                highlights = (await commands.executeCommand(
+                    'vscode.executeDocumentHighlights',
+                    codeCell.document.uri,
+                    new Position(0, 7)
+                )) as DocumentHighlight[];
+                return highlights && highlights.length > 0;
+            },
+            defaultNotebookTestTimeout,
+            `No highlights found for sys`
+        );
+
+        // Highlights should be just for this cell
+        assert.isNotEmpty(highlights, `No highlights found`);
+        assert.equal(highlights.length, 1, `Wrong number of highlights found`);
+        assert.ok(
+            highlights.find((item) => item.range.start.line == 0 && item.range.start.character == 6),
+            `Wrong range found for highlight`
+        );
     });
 });

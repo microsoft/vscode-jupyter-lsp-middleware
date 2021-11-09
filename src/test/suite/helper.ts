@@ -8,7 +8,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
-import { IDisposable, IVSCodeNotebook } from '../../common/types';
+import { IDisposable } from '../../common/types';
 import * as vslc from 'vscode-languageclient/node';
 import {
     ClientCapabilities,
@@ -23,9 +23,10 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware } from '../..';
+import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware, NotebookMiddleware } from '../..';
 import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
+import { NotebookWrapper } from '../../notebookWrapper';
 
 export interface Ctor<T> {
     new (): T;
@@ -85,24 +86,6 @@ export function mockTextDocument(uri: vscode.Uri, languageId: string, source: st
     })();
 }
 
-const notebookApi: IVSCodeNotebook = new (class implements IVSCodeNotebook {
-    public get onDidOpenNotebookDocument(): vscode.Event<vscode.NotebookDocument> {
-        return vscode.workspace.onDidOpenNotebookDocument;
-    }
-    public get onDidCloseNotebookDocument(): vscode.Event<vscode.NotebookDocument> {
-        return vscode.workspace.onDidCloseNotebookDocument;
-    }
-    public get notebookDocuments(): ReadonlyArray<vscode.NotebookDocument> {
-        return vscode.workspace.notebookDocuments;
-    }
-    public createConcatTextDocument(
-        doc: vscode.NotebookDocument,
-        selector?: vscode.DocumentSelector
-    ): vscode.NotebookConcatTextDocument {
-        return vscode.notebooks.createConcatTextDocument(doc, selector) as any;
-    }
-})();
-
 export function withTestNotebook(
     uri: vscode.Uri,
     cells: [
@@ -112,11 +95,11 @@ export function withTestNotebook(
         output?: vscode.NotebookCellOutput[],
         metadata?: any
     ][],
-    callback: (notebookDocument: vscode.NotebookDocument, notebookApi: IVSCodeNotebook) => void
+    callback: (notebookDocument: vscode.NotebookDocument) => void
 ) {
     let notebookDocument: vscode.NotebookDocument;
     const notebookCells = cells.map((cell, index) => {
-        const cellUri = uri.with({ fragment: `ch${index.toString().padStart(7, '0')}` });
+        const cellUri = uri.with({ fragment: `ch${index.toString().padStart(7, '0')}`, scheme: NotebookCellScheme });
 
         return new (class extends mock<vscode.NotebookCell>() {
             override get index() {
@@ -158,7 +141,7 @@ export function withTestNotebook(
         }
     })();
 
-    callback(notebookDocument, notebookApi);
+    callback(notebookDocument);
 }
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
@@ -874,11 +857,9 @@ export type MiddlewareType = 'pylance' | 'hiding' | 'notebook';
 
 function createMiddleware(
     middlewareType: MiddlewareType,
-    notebookApi: IVSCodeNotebook,
     getClient: () => LanguageClient | undefined,
     traceInfo: (...args: any[]) => void,
     cellSelector: DocumentSelector,
-    notebookFileRegex: RegExp,
     pythonPath: string,
     isDocumentAllowed: (uri: vscode.Uri) => boolean
 ) {
@@ -886,18 +867,17 @@ function createMiddleware(
         case 'hiding':
             return createHidingMiddleware();
         case 'pylance':
-            return createPylanceMiddleware(getClient, pythonPath, isDocumentAllowed);
+            return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed);
         case 'notebook':
-            return createNotebookMiddleware(
-                notebookApi,
-                getClient,
-                traceInfo,
-                cellSelector,
-                notebookFileRegex,
-                pythonPath,
-                isDocumentAllowed
-            );
+            return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed);
     }
+}
+
+function trackNotebookCellMovement(middleware: NotebookMiddleware): vscode.Disposable {
+    return vscode.notebooks.onDidChangeNotebookCells((e) => {
+        // Translate notebook cell movement into refresh events
+        middleware.refresh(e.document);
+    });
 }
 
 async function startLanguageServer(
@@ -934,14 +914,18 @@ async function startLanguageServer(
 
     const middleware = createMiddleware(
         middlewareType,
-        notebookApi,
         () => languageClient,
         traceInfo,
         selector,
-        /.*\.(ipynb|interactive)/m,
         pythonPath,
         shouldProvideIntellisense
     );
+
+    // Add custom message handling for notebook cell movement
+    const trackingDisposable =
+        middlewareType != 'hiding'
+            ? trackNotebookCellMovement(middleware as NotebookMiddleware)
+            : { dispose: () => {} };
 
     // Client options need to include our middleware piece
     const clientOptions: vslc.LanguageClientOptions = {
@@ -977,7 +961,7 @@ async function startLanguageServer(
         await languageClient.onReady();
     }
 
-    return new LanguageServer(languageClient, [languageClientDisposable, cancellationStrategy]);
+    return new LanguageServer(languageClient, [languageClientDisposable, cancellationStrategy, trackingDisposable]);
 }
 
 export async function createLanguageServer(
@@ -1009,4 +993,13 @@ export async function createLanguageServer(
             shouldProvideIntellisense
         );
     }
+}
+
+export function generateWrapper(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
+    const wrapper = new NotebookWrapper(notebook, 'python', `1`);
+    notebook.getCells().forEach((c) => wrapper.handleOpen(c.document));
+    if (extraCells) {
+        extraCells.forEach((c) => wrapper.handleOpen(c));
+    }
+    return wrapper;
 }

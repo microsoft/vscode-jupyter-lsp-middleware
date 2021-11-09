@@ -14,8 +14,6 @@ import {
     DocumentHighlight,
     DocumentLink,
     DocumentSymbol,
-    Event,
-    EventEmitter,
     Hover,
     Location,
     LocationLink,
@@ -24,7 +22,6 @@ import {
     SymbolInformation,
     TextDocument,
     TextDocumentChangeEvent,
-    TextDocumentContentChangeEvent,
     TextEdit,
     Uri,
     WorkspaceEdit,
@@ -41,48 +38,28 @@ import {
     SemanticTokens,
     SemanticTokensEdits,
     SemanticTokensEdit,
-    LinkedEditingRanges
+    LinkedEditingRanges,
+    workspace
 } from 'vscode';
-import { IVSCodeNotebook } from './common/types';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
 import * as path from 'path';
-import { IConcatTextDocument } from './concatTextDocument';
-import { NotebookConcatDocument } from './notebookConcatDocument';
+import { NotebookWrapper } from './notebookWrapper';
 
-/* Used by code actions. Disabled for now.
-function toRange(rangeLike: Range): Range {
-    return new Range(toPosition(rangeLike.start), toPosition(rangeLike.end));
-}
-
-function toPosition(positionLike: Position): Position {
-    return new Position(positionLike.line, positionLike.character);
-}
-*/
-
+/**
+ * Class responsible for converting incoming requests to outgoing types based on a concatenated document instead.
+ */
 export class NotebookConverter implements Disposable {
-    public get onDidChangeCells(): Event<TextDocumentChangeEvent> {
-        return this.onDidChangeCellsEmitter.event;
-    }
+    private activeWrappers: Map<string, NotebookWrapper> = new Map<string, NotebookWrapper>();
 
-    private activeDocuments: Map<string, NotebookConcatDocument> = new Map<string, NotebookConcatDocument>();
+    private pendingCloseWrappers: Map<string, NotebookWrapper> = new Map<string, NotebookWrapper>();
 
-    private pendingCloseDocuments: Map<string, NotebookConcatDocument> = new Map<string, NotebookConcatDocument>();
-
-    private activeDocumentsOutgoingMap: Map<string, NotebookConcatDocument> = new Map<string, NotebookConcatDocument>();
+    private activeWrappersOutgoingMap: Map<string, NotebookWrapper> = new Map<string, NotebookWrapper>();
 
     private disposables: Disposable[] = [];
 
-    private onDidChangeCellsEmitter = new EventEmitter<TextDocumentChangeEvent>();
-
     private mapOfConcatDocumentsWithCellUris = new Map<string, string[]>();
 
-    constructor(private api: IVSCodeNotebook, private cellSelector: DocumentSelector, private notebookFilter: RegExp) {
-        this.disposables.push(api.onDidOpenNotebookDocument(this.onDidOpenNotebook.bind(this)));
-        this.disposables.push(api.onDidCloseNotebookDocument(this.onDidCloseNotebook.bind(this)));
-
-        // Call open on all of the active notebooks too
-        api.notebookDocuments.forEach(this.onDidOpenNotebook.bind(this));
-    }
+    constructor(private cellSelector: DocumentSelector) {}
 
     private static getDocumentKey(uri: Uri): string {
         if (uri.scheme === InteractiveInputScheme) {
@@ -109,50 +86,43 @@ export class NotebookConverter implements Disposable {
     }
 
     public hasCell(cell: TextDocument): boolean {
-        const concat = this.getConcatDocument(cell);
-        return concat?.contains(cell.uri) ?? false;
+        const wrapper = this.getTextDocumentWrapper(cell);
+        return wrapper?.contains(cell.uri) ?? false;
     }
 
-    public hasFiredOpen(cell: TextDocument): boolean | undefined {
+    public isOpen(cell: TextDocument): boolean | undefined {
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
-            return wrapper.firedOpen;
+            return wrapper.isOpen;
         }
         return undefined;
     }
 
-    public firedOpen(cell: TextDocument): void {
+    public handleOpen(cell: TextDocument) {
         const wrapper = this.getTextDocumentWrapper(cell);
+        const results = wrapper?.handleOpen(cell);
         if (wrapper) {
-            wrapper.firedOpen = true;
+            // concat uri is empty until a cell is added.
+            this.activeWrappersOutgoingMap.set(NotebookConverter.getDocumentKey(wrapper.concatUri), wrapper);
         }
+        return results;
     }
 
-    public firedClose(document: TextDocument): TextDocument | undefined {
-        const key = NotebookConverter.getDocumentKey(document.uri);
-        let concatDocument = this.activeDocuments.get(key);
+    public handleRefresh(notebook: NotebookDocument) {
+        // Find the wrapper for any of the cells
+        const wrapper =
+            notebook.cellCount > 0 ? this.getTextDocumentWrapper(notebook.getCells()[0].document) : undefined;
+        return wrapper?.handleRefresh(notebook);
+    }
 
-        // concat document not closed yet
-        // mark the cell is closed (which contains `document`)
-        // when all cells are closed, we should return the concatDocument, so the language server will close it and clear diagnostics
-        if (concatDocument && concatDocument.isComposeDocumentsAllClosed) {
-            // Regenerate the document on next event. We could just mark 'firedOpen' as false,
-            // but the concat document has a bug where if all the cells are destroyed, the concat document
-            // stops tracking.
-            // So the alternative solution is to just regenerate on the next cell add.
-            this.deleteWrapper(concatDocument);
-            return concatDocument;
-        }
+    public handleClose(cell: TextDocument) {
+        const wrapper = this.getTextDocumentWrapper(cell);
+        return wrapper?.handleClose(cell);
+    }
 
-        concatDocument = this.pendingCloseDocuments.get(key);
-
-        if (concatDocument) {
-            // the document will not be closed, remove it from cache
-            this.pendingCloseDocuments.delete(key);
-            return concatDocument;
-        }
-
-        return undefined;
+    public handleChange(event: TextDocumentChangeEvent) {
+        const wrapper = this.getTextDocumentWrapper(event.document);
+        return wrapper?.handleChange(event);
     }
 
     public toIncomingDiagnosticsMap(uri: Uri, diagnostics: Diagnostic[]): Map<Uri, Diagnostic[]> {
@@ -164,7 +134,7 @@ export class NotebookConverter implements Disposable {
             // Make sure to clear out old ones first
             const cellUris: string[] = [];
             const oldCellUris = this.mapOfConcatDocumentsWithCellUris.get(uri.toString()) || [];
-            wrapper.concatDocument.getComposeDocuments().forEach((document: TextDocument) => {
+            wrapper.getComposeDocuments().forEach((document: TextDocument) => {
                 result.set(document.uri, []);
                 cellUris.push(document.uri.toString());
             });
@@ -180,7 +150,7 @@ export class NotebookConverter implements Disposable {
 
             // Then for all the new ones, set their values.
             filtered.forEach((d) => {
-                const location = wrapper.concatDocument.locationAt(d.range);
+                const location = wrapper.locationAt(d.range);
                 let list = result.get(location.uri);
                 if (!list) {
                     list = [];
@@ -240,29 +210,18 @@ export class NotebookConverter implements Disposable {
 
     public toOutgoingDocument(cell: TextDocument): TextDocument {
         const result = this.getTextDocumentWrapper(cell);
-        return result || cell;
+        return result?.getConcatDocument() || cell;
     }
 
     public toOutgoingUri(cell: TextDocument | Uri): Uri {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const result = this.getTextDocumentWrapper(cell);
-        return result ? result.uri : uri;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toOutgoingChangeEvent(cellEvent: TextDocumentChangeEvent) {
-        return {
-            document: this.toOutgoingDocument(cellEvent.document),
-            contentChanges: cellEvent.contentChanges.map(
-                this.toOutgoingContentChangeEvent.bind(this, cellEvent.document)
-            ),
-            reason: undefined
-        };
+        return result ? result.concatUri : uri;
     }
 
     public toOutgoingPosition(cell: TextDocument, position: Position): Position {
-        const concat = this.getConcatDocument(cell);
-        return concat ? concat.positionAt(new Location(cell.uri, position)) : position;
+        const wrapper = this.getTextDocumentWrapper(cell);
+        return wrapper ? wrapper.positionAt(new Location(cell.uri, position)) : position;
     }
 
     public toOutgoingPositions(cell: TextDocument, positions: Position[]) {
@@ -270,29 +229,21 @@ export class NotebookConverter implements Disposable {
     }
 
     public toOutgoingRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
-        const concat = this.getConcatDocument(cell);
-        if (concat) {
+        const wrapper = this.getTextDocumentWrapper(cell);
+        if (wrapper) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-            const notebook = this.getNotebookDocument(cell);
-            const cellDocument =
-                cell instanceof Uri ? notebook?.getCells().find((c) => c.document.uri == uri)?.document : cell;
-            const start = cellRange ? cellRange.start : new Position(0, 0);
-            const end = cellRange
-                ? cellRange.end
-                : cellDocument?.lineAt(cellDocument.lineCount - 1).range.end || new Position(0, 0);
-            const startPos = concat.positionAt(new Location(uri, start));
-            const endPos = concat.positionAt(new Location(uri, end));
-            return new Range(startPos, endPos);
+            const range = wrapper.rangeOf(uri);
+            return range || cellRange || new Range(new Position(0, 0), new Position(0, 0));
         }
         return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
 
     public toOutgoingOffset(cell: TextDocument, offset: number): number {
-        const concat = this.getConcatDocument(cell);
-        if (concat) {
+        const wrapper = this.getTextDocumentWrapper(cell);
+        if (wrapper) {
             const position = cell.positionAt(offset);
-            const overallPosition = concat.positionAt(new Location(cell.uri, position));
-            return concat.offsetAt(overallPosition);
+            const overallPosition = wrapper.positionAt(new Location(cell.uri, position));
+            return wrapper.offsetAt(overallPosition);
         }
         return offset;
     }
@@ -350,13 +301,13 @@ export class NotebookConverter implements Disposable {
         if (!highlight) {
             return undefined;
         }
-        const concat = this.getConcatDocument(cell);
-        if (!concat) {
+        const wrapper = this.getTextDocumentWrapper(cell);
+        if (!wrapper) {
             return undefined;
         }
         const result: DocumentHighlight[] = [];
         for (let h of highlight) {
-            const loc = concat.locationAt(h.range);
+            const loc = wrapper.locationAt(h.range);
             if (loc.uri.toString() === cell.uri.toString()) {
                 result.push({ ...h, range: loc.range });
             }
@@ -429,17 +380,17 @@ export class NotebookConverter implements Disposable {
         rangeOrRename:
             | Range
             | {
-                range: Range;
-                placeholder: string;
-            }
+                  range: Range;
+                  placeholder: string;
+              }
             | null
             | undefined
     ):
         | Range
         | {
-            range: Range;
-            placeholder: string;
-        }
+              range: Range;
+              placeholder: string;
+          }
         | undefined {
         if (rangeOrRename) {
             if (rangeOrRename instanceof Range) {
@@ -508,8 +459,8 @@ export class NotebookConverter implements Disposable {
         }
         // Might be deleted, check for pending delete
         if (!result) {
-            this.pendingCloseDocuments.forEach((n) => {
-                if (this.arePathsSame(n.uri.fsPath, outgoingUri.fsPath)) {
+            this.pendingCloseWrappers.forEach((n) => {
+                if (this.arePathsSame(n.concatUri.fsPath, outgoingUri.fsPath)) {
                     result = n.notebook.uri;
                 }
             });
@@ -682,8 +633,8 @@ export class NotebookConverter implements Disposable {
             const wrapper = this.getTextDocumentWrapper(cellUri);
             // First line offset is the wrong number. It is from the beginning of the concat doc and not the
             // cell.
-            if (wrapper && wrapper.concatDocument && tokens.data.length > 0) {
-                const startOfCell = wrapper.concatDocument.positionAt(new Location(cellUri, new Position(0, 0)));
+            if (wrapper && tokens.data.length > 0) {
+                const startOfCell = wrapper.positionAt(new Location(cellUri, new Position(0, 0)));
 
                 // Note to self: If tokenization stops working, might be pylance's fault. It does handle
                 // range requests but was returning stuff outside the range.
@@ -710,7 +661,7 @@ export class NotebookConverter implements Disposable {
 
     public remove(cell: TextDocument) {
         const key = NotebookConverter.getDocumentKey(cell.uri);
-        const wrapper = this.activeDocuments.get(key);
+        const wrapper = this.activeWrappers.get(key);
         if (wrapper) {
             this.deleteWrapper(wrapper);
         }
@@ -718,7 +669,7 @@ export class NotebookConverter implements Disposable {
 
     private getTextDocumentAtLocation(location: Location): TextDocument | undefined {
         const key = NotebookConverter.getDocumentKey(location.uri);
-        const wrapper = this.activeDocuments.get(key);
+        const wrapper = this.activeWrappers.get(key);
         if (wrapper) {
             return wrapper.getTextDocumentAtPosition(location.range.start);
         }
@@ -905,10 +856,10 @@ export class NotebookConverter implements Disposable {
 
     private toIncomingLocationFromRange(cell: TextDocument | Uri, range: Range): Location {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-        const concatDocument = this.getConcatDocument(cell);
-        if (concatDocument) {
-            const startLoc = concatDocument.locationAt(range.start);
-            const endLoc = concatDocument.locationAt(range.end);
+        const wrapper = this.getTextDocumentWrapper(cell);
+        if (wrapper) {
+            const startLoc = wrapper.locationAt(range.start);
+            const endLoc = wrapper.locationAt(range.end);
             return {
                 uri: startLoc.uri,
                 range: new Range(startLoc.range.start, endLoc.range.end)
@@ -920,38 +871,10 @@ export class NotebookConverter implements Disposable {
         };
     }
 
-    private toOutgoingContentChangeEvent(cell: TextDocument, ev: TextDocumentContentChangeEvent) {
-        return {
-            range: this.toOutgoingRange(cell, ev.range),
-            rangeLength: ev.rangeLength,
-            rangeOffset: this.toOutgoingOffset(cell, ev.rangeOffset),
-            text: ev.text
-        };
-    }
-
-    private onDidOpenNotebook(doc: NotebookDocument) {
-        if (this.notebookFilter.test(doc.uri.fsPath)) {
-            this.getTextDocumentWrapper(doc.uri);
-            const key = NotebookConverter.getDocumentKey(doc.uri);
-            this.pendingCloseDocuments.delete(key);
-        }
-    }
-
-    private onDidCloseNotebook(doc: NotebookDocument) {
-        if (this.notebookFilter.test(doc.uri.fsPath)) {
-            const key = NotebookConverter.getDocumentKey(doc.uri);
-            const wrapper = this.activeDocuments.get(key);
-            if (wrapper) {
-                this.pendingCloseDocuments.set(key, wrapper);
-                this.deleteWrapper(wrapper);
-            }
-        }
-    }
-
-    private deleteWrapper(wrapper: NotebookConcatDocument) {
+    private deleteWrapper(wrapper: NotebookWrapper) {
         // Cleanup both maps and dispose of the wrapper (disconnects the cell change emitter)
-        this.activeDocumentsOutgoingMap.delete(NotebookConverter.getDocumentKey(wrapper.uri));
-        this.activeDocuments.delete(wrapper.key);
+        this.activeWrappersOutgoingMap.delete(NotebookConverter.getDocumentKey(wrapper.concatUri));
+        this.activeWrappers.delete(wrapper.key);
         wrapper.dispose();
     }
 
@@ -961,32 +884,26 @@ export class NotebookConverter implements Disposable {
         return path1 === path2;
     }
 
-    private getWrapperFromOutgoingUri(outgoingUri: Uri): NotebookConcatDocument | undefined {
-        return this.activeDocumentsOutgoingMap.get(NotebookConverter.getDocumentKey(outgoingUri));
+    private getWrapperFromOutgoingUri(outgoingUri: Uri): NotebookWrapper | undefined {
+        return this.activeWrappersOutgoingMap.get(NotebookConverter.getDocumentKey(outgoingUri));
     }
 
-    private getTextDocumentWrapper(cell: TextDocument | Uri): NotebookConcatDocument {
+    private getTextDocumentWrapper(cell: TextDocument | Uri): NotebookWrapper {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const key = NotebookConverter.getDocumentKey(uri);
-        let result = this.activeDocuments.get(key);
+        let result = this.activeWrappers.get(key);
         if (!result) {
-            const doc = this.api.notebookDocuments.find((n) => this.arePathsSame(uri.fsPath, n.uri.fsPath));
+            const doc = workspace.notebookDocuments.find((n) => this.arePathsSame(uri.fsPath, n.uri.fsPath));
             if (!doc) {
                 throw new Error(`Invalid uri, not a notebook: ${uri.fsPath}`);
             }
-            result = new NotebookConcatDocument(doc, this.api, this.cellSelector, key);
-            result.onCellsChanged((e) => this.onDidChangeCellsEmitter.fire(e)); // This should be cleaned up when the result is disposed.
-            this.activeDocuments.set(key, result);
-            this.activeDocumentsOutgoingMap.set(NotebookConverter.getDocumentKey(result.uri), result);
+            result = new NotebookWrapper(doc, this.cellSelector, key);
+            this.activeWrappers.set(key, result);
         }
         return result;
     }
 
-    private getConcatDocument(cell: TextDocument | Uri): IConcatTextDocument | undefined {
-        return this.getTextDocumentWrapper(cell)?.concatDocument;
-    }
-
-    private filterMagics(wrapper: NotebookConcatDocument, value: Diagnostic): boolean {
+    private filterMagics(wrapper: NotebookWrapper, value: Diagnostic): boolean {
         // Get the code at the range
         const text = wrapper.getText(value.range);
 
@@ -995,14 +912,5 @@ export class NotebookConverter implements Disposable {
             return false;
         }
         return true;
-    }
-
-    private getNotebookDocument(cell: TextDocument | Uri): NotebookDocument | undefined {
-        const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-        const key = NotebookConverter.getDocumentKey(uri);
-        let result = this.activeDocuments.get(key);
-        if (result) {
-            return result.notebook;
-        }
     }
 }

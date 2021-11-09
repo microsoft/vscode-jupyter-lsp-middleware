@@ -66,7 +66,7 @@ async function main() {
             extensionTestsPath,
             launchArgs: [
                 workspacePath,
-                '--enable-proposed-api',
+                '--enable-proposed-api=ms-vscode.vscode-jupyter-lsp-middleware',
                 '--skip-welcome',
                 '--skip-release-notes',
                 '--disable-workspace-trust'

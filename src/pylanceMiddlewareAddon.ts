@@ -22,6 +22,7 @@ import {
     DocumentHighlight,
     DocumentLink,
     DocumentSymbol,
+    DocumentSelector,
     FoldingContext,
     FoldingRange,
     FormattingOptions,
@@ -48,6 +49,7 @@ import {
     ConfigurationRequest,
     DidCloseTextDocumentNotification,
     DidOpenTextDocumentNotification,
+    DidOpenTextDocumentParams,
     HandleDiagnosticsSignature,
     LanguageClient,
     Middleware,
@@ -74,7 +76,7 @@ import {
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isThenable } from './common/utils';
+import { isThenable, score } from './common/utils';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
 import {
@@ -94,6 +96,7 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
+import { RefreshNotebookEvent } from './common/types';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -103,6 +106,7 @@ import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/co
 export class PylanceMiddlewareAddon implements Middleware, Disposable {
     constructor(
         private readonly getClient: () => LanguageClient | undefined,
+        private readonly selector: string | DocumentSelector,
         private readonly pythonPath: string,
         private readonly isDocumentAllowed: (uri: Uri) => boolean
     ) {
@@ -175,6 +179,30 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
 
     public didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
         next(document);
+    }
+
+    public refresh(notebook: NotebookDocument) {
+        // Turn this into the custom message instead.
+        const client = this.getClient();
+        if (client) {
+            const cells: DidOpenTextDocumentParams[] = notebook
+                .getCells()
+                .filter((c) => score(c.document, this.selector))
+                .map((c) => {
+                    return {
+                        textDocument: {
+                            uri: c.document.uri.toString(),
+                            version: c.document.version,
+                            languageId: c.document.languageId,
+                            text: c.document.getText()
+                        }
+                    };
+                });
+            const params: RefreshNotebookEvent = {
+                cells
+            };
+            client.sendNotification('notebook/refresh', params);
+        }
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
