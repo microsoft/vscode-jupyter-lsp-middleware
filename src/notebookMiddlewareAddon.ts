@@ -230,7 +230,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             } else {
                 // Converter will change to the correct params
                 const params = this.converter.handleChange(event);
-                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                if (params) {
+                    client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                }
             }
         }
     }
@@ -253,7 +255,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             if (!sentOpen) {
                 const newDoc = this.converter.toOutgoingDocument(document);
                 next(newDoc);
-            } else {
+            } else if (params) {
                 // Otherwise send a change event
                 client.sendNotification(DidChangeTextDocumentNotification.type, params);
             }
@@ -278,7 +280,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
                 // All cells deleted, send a close notification
                 const newDoc = this.converter.toOutgoingDocument(document);
                 next(newDoc);
-            } else if (!isClosed) {
+            } else if (!isClosed && params) {
                 // Otherwise we changed the document by deleting cells.
                 client.sendNotification(DidChangeTextDocumentNotification.type, params);
             }

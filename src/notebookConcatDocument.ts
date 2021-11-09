@@ -81,7 +81,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     private _contents: string = '';
     private _cellRanges: ICellRange[] = [];
 
-    public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams {
+    public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams | undefined {
         this._version++;
         const changes: protocol.TextDocumentContentChangeEvent[] = [];
         const cellIndex = this._cellRanges.findIndex((c) => c.uri.toString() === e.textDocument.uri);
@@ -94,8 +94,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 const to = new vscode.Position(position.line + edit.range.end.line, edit.range.end.character);
                 changes.push(...this.changeRange(normalized, from, to, cellIndex));
             });
+            return this.toDidChangeTextDocumentParams(changes);
         }
-        return this.toDidChangeTextDocumentParams(changes);
     }
 
     public handleOpen(e: protocol.TextDocumentItem): protocol.DidChangeTextDocumentParams | undefined {
@@ -164,8 +164,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return this.toDidChangeTextDocumentParams(changes);
     }
 
-    public handleClose(e: protocol.TextDocumentIdentifier): protocol.DidChangeTextDocumentParams {
-        let changes: protocol.TextDocumentContentChangeEvent[] = [];
+    public handleClose(e: protocol.TextDocumentIdentifier): protocol.DidChangeTextDocumentParams | undefined {
         const index = this._cellRanges.findIndex((c) => c.uri.toString() === e.uri);
 
         // Setup uri and such if a reopen.
@@ -193,7 +192,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             this._contents = `${before}${after}`;
             this._lines = this.createLines();
 
-            changes = [
+            const changes: protocol.TextDocumentContentChangeEvent[] = [
                 {
                     range: this.createSerializableRange(from, to),
                     rangeOffset: found.startOffset,
@@ -206,9 +205,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             if (this._cellRanges.length == 0) {
                 this._closed = true;
             }
+            return this.toDidChangeTextDocumentParams(changes);
         }
-
-        return this.toDidChangeTextDocumentParams(changes);
     }
 
     public handleRefresh(e: RefreshNotebookEvent): protocol.DidChangeTextDocumentParams | undefined {

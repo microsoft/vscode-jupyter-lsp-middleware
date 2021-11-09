@@ -100,7 +100,7 @@ export class NotebookConverter implements Disposable {
 
     public handleOpen(cell: TextDocument) {
         const wrapper = this.getTextDocumentWrapper(cell);
-        const results = wrapper?.handleOpen(cell) || [];
+        const results = wrapper?.handleOpen(cell);
         if (wrapper) {
             // concat uri is empty until a cell is added.
             this.activeWrappersOutgoingMap.set(NotebookConverter.getDocumentKey(wrapper.concatUri), wrapper);
@@ -112,17 +112,17 @@ export class NotebookConverter implements Disposable {
         // Find the wrapper for any of the cells
         const wrapper =
             notebook.cellCount > 0 ? this.getTextDocumentWrapper(notebook.getCells()[0].document) : undefined;
-        return wrapper?.handleRefresh(notebook) || [];
+        return wrapper?.handleRefresh(notebook);
     }
 
     public handleClose(cell: TextDocument) {
         const wrapper = this.getTextDocumentWrapper(cell);
-        return wrapper?.handleClose(cell) || [];
+        return wrapper?.handleClose(cell);
     }
 
     public handleChange(event: TextDocumentChangeEvent) {
         const wrapper = this.getTextDocumentWrapper(event.document);
-        return wrapper?.handleChange(event) || [];
+        return wrapper?.handleChange(event);
     }
 
     public toIncomingDiagnosticsMap(uri: Uri, diagnostics: Diagnostic[]): Map<Uri, Diagnostic[]> {
