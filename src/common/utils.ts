@@ -40,6 +40,14 @@ export function isNotebookCell(documentOrUri: TextDocument | Uri): boolean {
     return uri.scheme.includes(NotebookCellScheme) || uri.scheme.includes(InteractiveInputScheme);
 }
 
+export function isInteractiveCell(cellUri: Uri): boolean {
+    return (
+        cellUri.fragment.includes(InteractiveScheme) ||
+        cellUri.scheme.includes(InteractiveInputScheme) ||
+        cellUri.scheme.includes(InteractiveScheme)
+    );
+}
+
 export function splitLines(
     str: string,
     splitOptions: { trim?: boolean; removeEmptyEntries?: boolean } = { removeEmptyEntries: true, trim: true }

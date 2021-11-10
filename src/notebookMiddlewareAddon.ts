@@ -44,8 +44,7 @@ import {
     TextDocumentWillSaveEvent,
     TextEdit,
     Uri,
-    WorkspaceEdit,
-    workspace
+    WorkspaceEdit
 } from 'vscode';
 import {
     ConfigurationParams,
@@ -81,7 +80,7 @@ import {
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isNotebookCell, isThenable } from './common/utils';
+import { isInteractiveCell, isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
@@ -239,12 +238,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (
-            isNotebookCell(document.uri) &&
-            this.isDocumentAllowed(document.uri) &&
-            workspace.notebookDocuments.find((n) => n.uri.fsPath === document.uri.fsPath) &&
-            client
-        ) {
+        if (isNotebookCell(document.uri) && this.isDocumentAllowed(document.uri) && client) {
             const sentOpen = this.converter.isOpen(document);
             const params = this.converter.handleOpen(document);
 
@@ -596,7 +590,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             incomingUri &&
             incomingUri != uri &&
             this.shouldProvideIntellisense(incomingUri) &&
-            !incomingUri.toString().includes('nteractive') // Skip diagnostics on the interactive window. Not particularly useful
+            !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
         ) {
             // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
             // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.

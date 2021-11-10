@@ -38,8 +38,7 @@ import {
     SemanticTokens,
     SemanticTokensEdits,
     SemanticTokensEdit,
-    LinkedEditingRanges,
-    workspace
+    LinkedEditingRanges
 } from 'vscode';
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from './common/utils';
 import * as path from 'path';
@@ -134,9 +133,9 @@ export class NotebookConverter implements Disposable {
             // Make sure to clear out old ones first
             const cellUris: string[] = [];
             const oldCellUris = this.mapOfConcatDocumentsWithCellUris.get(uri.toString()) || [];
-            wrapper.getComposeDocuments().forEach((document: TextDocument) => {
-                result.set(document.uri, []);
-                cellUris.push(document.uri.toString());
+            wrapper.getCells().forEach((uri) => {
+                result.set(uri, []);
+                cellUris.push(uri.toString());
             });
             // Possible some cells were deleted, we need to clear the diagnostics of those cells as well.
             const currentCellUris = new Set(cellUris);
@@ -321,15 +320,15 @@ export class NotebookConverter implements Disposable {
             if (symbols[0] instanceof DocumentSymbol) {
                 return (<DocumentSymbol[]>symbols).map(this.toIncomingSymbolFromDocumentSymbol.bind(this, cell));
             }
-            return (<SymbolInformation[]>symbols).map(this.toIncomingSymbolFromSymbolInformation.bind(this, cell));
+            return (<SymbolInformation[]>symbols).map(this.toIncomingSymbolFromSymbolInformation.bind(this, cell.uri));
         }
         return symbols ?? undefined;
     }
 
-    public toIncomingSymbolFromSymbolInformation(cell: TextDocument, symbol: SymbolInformation): SymbolInformation {
+    public toIncomingSymbolFromSymbolInformation(cellUri: Uri, symbol: SymbolInformation): SymbolInformation {
         return {
             ...symbol,
-            location: this.toIncomingLocationFromRange(cell, symbol.location.range)
+            location: this.toIncomingLocationFromRange(cellUri, symbol.location.range)
         };
     }
 
@@ -435,13 +434,8 @@ export class NotebookConverter implements Disposable {
     public toIncomingOffset(cell: TextDocument | Uri, offset: number): number {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const wrapper = this.getWrapperFromOutgoingUri(uri);
-        if (wrapper && wrapper.notebook) {
-            const position = wrapper.positionAt(offset);
-            const location = wrapper.locationAt(position);
-            const cell = wrapper.notebook.getCells().find((c) => c.document.uri == location.uri);
-            if (cell) {
-                return cell.document.offsetAt(location.range.start);
-            }
+        if (wrapper) {
+            return wrapper.cellOffsetAt(offset);
         }
         return offset;
     }
@@ -449,19 +443,19 @@ export class NotebookConverter implements Disposable {
     public toIncomingUri(outgoingUri: Uri, range?: Range) {
         const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
         let result: Uri | undefined;
-        if (wrapper && wrapper.notebook) {
+        if (wrapper) {
             if (range) {
                 const location = wrapper.locationAt(range);
                 result = location.uri;
             } else {
-                result = wrapper.notebook.uri;
+                result = wrapper.notebookUri;
             }
         }
         // Might be deleted, check for pending delete
         if (!result) {
             this.pendingCloseWrappers.forEach((n) => {
                 if (this.arePathsSame(n.concatUri.fsPath, outgoingUri.fsPath)) {
-                    result = n.notebook.uri;
+                    result = n.notebookUri;
                 }
             });
         }
@@ -667,22 +661,9 @@ export class NotebookConverter implements Disposable {
         }
     }
 
-    private getTextDocumentAtLocation(location: Location): TextDocument | undefined {
-        const key = NotebookConverter.getDocumentKey(location.uri);
-        const wrapper = this.activeWrappers.get(key);
-        if (wrapper) {
-            return wrapper.getTextDocumentAtPosition(location.range.start);
-        }
-        return undefined;
-    }
-
     private toIncomingWorkspaceSymbol(symbol: SymbolInformation): SymbolInformation {
         // Figure out what cell if any the symbol is for
-        const document = this.getTextDocumentAtLocation(symbol.location);
-        if (document) {
-            return this.toIncomingSymbolFromSymbolInformation(document, symbol);
-        }
-        return symbol;
+        return this.toIncomingSymbolFromSymbolInformation(symbol.location.uri, symbol);
     }
 
     /* Renable this if actions can be translated
@@ -893,11 +874,7 @@ export class NotebookConverter implements Disposable {
         const key = NotebookConverter.getDocumentKey(uri);
         let result = this.activeWrappers.get(key);
         if (!result) {
-            const doc = workspace.notebookDocuments.find((n) => this.arePathsSame(uri.fsPath, n.uri.fsPath));
-            if (!doc) {
-                throw new Error(`Invalid uri, not a notebook: ${uri.fsPath}`);
-            }
-            result = new NotebookWrapper(doc, this.cellSelector, key);
+            result = new NotebookWrapper(this.cellSelector, key);
             this.activeWrappers.set(key, result);
         }
         return result;
