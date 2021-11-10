@@ -996,7 +996,7 @@ export async function createLanguageServer(
 }
 
 export function generateWrapper(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const wrapper = new NotebookWrapper(notebook, 'python', `1`);
+    const wrapper = new NotebookWrapper('python', `1`);
     notebook.getCells().forEach((c) => wrapper.handleOpen(c.document));
     if (extraCells) {
         extraCells.forEach((c) => wrapper.handleOpen(c));

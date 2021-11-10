@@ -17,24 +17,16 @@ export class NotebookWrapper implements vscode.Disposable {
     public get concatUri() {
         return this.concatDocument.concatUri;
     }
+    public get notebookUri() {
+        return this.concatDocument.notebookUri;
+    }
     private concatDocument: NotebookConcatDocument = new NotebookConcatDocument();
-    constructor(
-        public notebook: vscode.NotebookDocument,
-        private readonly selector: vscode.DocumentSelector,
-        public readonly key: string
-    ) {}
+    constructor(private readonly selector: vscode.DocumentSelector, public readonly key: string) {}
     public dispose() {
         this.concatDocument.dispose();
     }
-    public getComposeDocuments() {
-        return this.notebook
-            .getCells()
-            .filter((c) => score(c.document, this.selector) > 0)
-            .map((c) => c.document);
-    }
-    public getTextDocumentAtPosition(position: vscode.Position): vscode.TextDocument | undefined {
-        const location = this.concatDocument.locationAt(position);
-        return this.getComposeDocuments().find((c) => c.uri === location.uri);
+    public getCells(): vscode.Uri[] {
+        return this.concatDocument.getCells();
     }
     public handleOpen(cell: vscode.TextDocument): protocol.DidChangeTextDocumentParams | undefined {
         if (score(cell, this.selector)) {
@@ -71,7 +63,7 @@ export class NotebookWrapper implements vscode.Disposable {
         }
     }
     public handleRefresh(notebook: vscode.NotebookDocument): protocol.DidChangeTextDocumentParams | undefined {
-        if (notebook == this.notebook) {
+        if (this.getCells().find((uri) => uri.fsPath == notebook.uri.fsPath)) {
             // Convert the notebook into something the concat document can understand (protocol types)
             return this.concatDocument.handleRefresh({
                 cells: notebook
@@ -109,9 +101,9 @@ export class NotebookWrapper implements vscode.Disposable {
         return this.concatDocument.contains(cellUri);
     }
     public rangeOf(cellUri: vscode.Uri) {
-        const cell = this.notebook.getCells().find((c) => c.document.uri.toString() === cellUri.toString())?.document;
-        if (cell && score(cell, this.selector)) {
-            return this.concatDocument.rangeOf(cellUri);
-        }
+        return this.concatDocument.rangeOf(cellUri);
+    }
+    public cellOffsetAt(offset: number) {
+        return this.concatDocument.cellOffsetAt(offset);
     }
 }

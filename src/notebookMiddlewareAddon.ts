@@ -44,8 +44,7 @@ import {
     TextDocumentWillSaveEvent,
     TextEdit,
     Uri,
-    WorkspaceEdit,
-    workspace
+    WorkspaceEdit
 } from 'vscode';
 import {
     ConfigurationParams,
@@ -81,7 +80,7 @@ import {
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isNotebookCell, isThenable } from './common/utils';
+import { isInteractiveCell, isNotebookCell, isThenable } from './common/utils';
 import { NotebookConverter } from './notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
@@ -222,17 +221,14 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // If this is a notebook cell, change this into a concat document event
         if (isNotebookCell(event.document.uri) && client) {
             const sentOpen = this.converter.isOpen(event.document);
+            const params = this.converter.handleChange(event);
             if (!sentOpen) {
                 // First time opening, send an open instead
                 const newDoc = this.converter.toOutgoingDocument(event.document);
                 const params = client.code2ProtocolConverter.asOpenTextDocumentParams(newDoc);
                 client.sendNotification(DidOpenTextDocumentNotification.type, params);
-            } else {
-                // Converter will change to the correct params
-                const params = this.converter.handleChange(event);
-                if (params) {
-                    client.sendNotification(DidChangeTextDocumentNotification.type, params);
-                }
+            } else if (params) {
+                client.sendNotification(DidChangeTextDocumentNotification.type, params);
             }
         }
     }
@@ -242,12 +238,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (
-            isNotebookCell(document.uri) &&
-            this.isDocumentAllowed(document.uri) &&
-            workspace.notebookDocuments.find((n) => n.uri.fsPath === document.uri.fsPath) &&
-            client
-        ) {
+        if (isNotebookCell(document.uri) && this.isDocumentAllowed(document.uri) && client) {
             const sentOpen = this.converter.isOpen(document);
             const params = this.converter.handleOpen(document);
 
@@ -595,7 +586,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
         const incomingUri = this.converter.toIncomingUri(uri);
-        if (incomingUri && incomingUri != uri && this.shouldProvideIntellisense(incomingUri)) {
+        if (
+            incomingUri &&
+            incomingUri != uri &&
+            this.shouldProvideIntellisense(incomingUri) &&
+            !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
+        ) {
             // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
             // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
             // Otherwise old messages for cells that didn't change this time won't go away.

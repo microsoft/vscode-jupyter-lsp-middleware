@@ -9,7 +9,7 @@ import * as shajs from 'sha.js';
 import {
     InteractiveInputScheme,
     InteractiveScheme,
-    NotebookCellScheme,
+    isInteractiveCell,
     NotebookScheme,
     PYTHON_LANGUAGE,
     splitLines
@@ -217,14 +217,16 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             const to = this.positionAt(this._contents.length);
             const oldLength = this._contents.length;
             const oldContents = this._contents;
-            const newContents = `${e.cells.map((c) => c.textDocument.text).join('\n')}\n`;
+            const normalizedCellText = e.cells.map((c) => c.textDocument.text.replace(/\r/g, ''));
+            const newContents = `${normalizedCellText.join('\n')}\n`;
             if (newContents != oldContents) {
                 this._version++;
                 this._cellRanges = [];
                 this._contents = newContents;
                 this._lines = this.createLines();
                 let startOffset = 0;
-                e.cells.forEach((c) => {
+                e.cells.forEach((c, i) => {
+                    const cellText = normalizedCellText[i];
                     const cellUri = vscode.Uri.parse(c.textDocument.uri);
                     this._cellRanges.push({
                         uri: cellUri,
@@ -234,7 +236,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                             cellUri.scheme === InteractiveInputScheme
                                 ? -1
                                 : parseInt(cellUri.fragment.substring(2) || '0'),
-                        endOffset: startOffset + c.textDocument.text.length + 1 // Account for \n between cells
+                        endOffset: startOffset + cellText.length + 1 // Account for \n between cells
                     });
                     startOffset = this._cellRanges[this._cellRanges.length - 1].endOffset;
                 });
@@ -277,6 +279,15 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     public offsetAt(position: vscode.Position | vscode.Location): number {
         return this.convertToOffset(position);
     }
+    public cellOffsetAt(offset: number): number {
+        const positionAt = this.positionAt(offset);
+        const locationAt = this.locationAt(positionAt);
+        const cell = this._cellRanges.find((c) => c.uri.toString() === locationAt.uri.toString());
+        if (cell) {
+            return offset - cell.startOffset;
+        }
+        return offset;
+    }
     public positionAt(offsetOrPosition: number | vscode.Position | vscode.Location): vscode.Position {
         if (typeof offsetOrPosition !== 'number') {
             offsetOrPosition = this.offsetAt(offsetOrPosition);
@@ -307,6 +318,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             const endOffset = this.convertToOffset(range.end);
             return this._contents.substring(startOffset, endOffset - startOffset);
         }
+    }
+    public getCells(): vscode.Uri[] {
+        return this._cellRanges.map((c) => c.uri);
     }
     public locationAt(positionOrRange: vscode.Range | vscode.Position): vscode.Location {
         if (positionOrRange instanceof vscode.Position) {
@@ -516,15 +530,19 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     }
 
     private computeInsertionIndex(fragment: number): number {
-        // Otherwise find the cell range that has a higher fragment
+        // Remember if last cell is already the input box
+        const inputBoxPresent = this._cellRanges[this._cellRanges.length - 1]?.uri.scheme === InteractiveInputScheme;
+        const totalLength = inputBoxPresent ? this._cellRanges.length - 1 : this._cellRanges.length;
+
+        // Find index based on fragment
         const index =
             fragment == -1 ? this._cellRanges.length : this._cellRanges.findIndex((c) => c.fragment > fragment);
-        return index < 0 ? this._cellRanges.length : index;
+        return index < 0 ? totalLength : index;
     }
 
     private initialize(cellUri: vscode.Uri) {
         if (!this._concatUri?.fsPath) {
-            this._interactiveWindow = cellUri.scheme !== NotebookCellScheme;
+            this._interactiveWindow = isInteractiveCell(cellUri);
             const dir = path.dirname(cellUri.fsPath);
 
             // Path has to match no matter how many times we open it.
