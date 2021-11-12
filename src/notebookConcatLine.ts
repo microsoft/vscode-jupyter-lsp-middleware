@@ -3,34 +3,36 @@
 'use strict';
 
 import * as vscode from 'vscode';
+import { InteractiveInputScheme } from './common/utils';
 
 export class NotebookConcatLine implements vscode.TextLine {
-    private _range: vscode.Range;
-    private _rangeWithLineBreak: vscode.Range;
     private _firstNonWhitespaceIndex: number | undefined;
     private _isEmpty: boolean | undefined;
+    private _fragment: number;
 
-    constructor(private _contents: string, private _line: number, private _offset: number) {
-        this._range = new vscode.Range(new vscode.Position(_line, 0), new vscode.Position(_line, _contents.length));
-        this._rangeWithLineBreak = new vscode.Range(this.range.start, new vscode.Position(_line, _contents.length + 1));
+    constructor(public uri: vscode.Uri, public offset: number, public lineNumber: number, private _contents: string) {
+        this._fragment = uri.scheme === InteractiveInputScheme ? -1 : parseInt(uri.fragment.substring(2) || '0');
     }
-    public get offset(): number {
-        return this._offset;
+    public get fragment(): number {
+        return this._fragment;
     }
     public get endOffset(): number {
-        return this._offset + this._contents.length + 1;
-    }
-    public get lineNumber(): number {
-        return this._line;
+        return this.offset + this._contents.length + 1;
     }
     public get text(): string {
         return this._contents;
     }
     public get range(): vscode.Range {
-        return this._range;
+        return new vscode.Range(
+            new vscode.Position(this.lineNumber, 0),
+            new vscode.Position(this.lineNumber, this._contents.length)
+        );
     }
     public get rangeIncludingLineBreak(): vscode.Range {
-        return this._rangeWithLineBreak;
+        return new vscode.Range(
+            new vscode.Position(this.lineNumber, 0),
+            new vscode.Position(this.lineNumber, this._contents.length + 1)
+        );
     }
     public get firstNonWhitespaceCharacterIndex(): number {
         if (this._firstNonWhitespaceIndex === undefined) {

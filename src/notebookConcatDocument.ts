@@ -7,6 +7,7 @@ import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
 import * as shajs from 'sha.js';
 import {
+    findLastIndex,
     InteractiveInputScheme,
     InteractiveScheme,
     isInteractiveCell,
@@ -22,13 +23,11 @@ import {
 import { NotebookConcatLine } from './notebookConcatLine';
 import { RefreshNotebookEvent } from './common/types';
 
-interface ICellRange {
-    uri: vscode.Uri;
-    fragment: number;
-    startOffset: number;
-    endOffset: number;
-    startLine: number;
-}
+const LineTransforms = [
+    { regex: /(^\s*%.*\n)/g, replace: '(\\1) # type: ignore\n ' },
+    { regex: /(^\s*!.*\n)/g, replace: '(\\1) # type: ignore\n ' },
+    { regex: /(^\s*await\s+.*\n)/g, replace: '(\\1) # type: ignore\n ' }
+];
 
 const NotebookConcatPrefix = '_NotebookConcat_';
 
@@ -58,7 +57,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return vscode.EndOfLine.LF;
     }
     public get lineCount(): number {
-        return this._lines.length;
+        return this._concatlines.length;
     }
     public get notebook(): vscode.NotebookDocument | undefined {
         // This represents a python file, so notebook should be undefined
@@ -76,18 +75,58 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     private _notebookUri: vscode.Uri | undefined;
     private _version = 1;
     private _closed = true;
-    private _lines: NotebookConcatLine[] = [];
+    private _concatlines: NotebookConcatLine[] = [];
+    private _notebookLines: NotebookConcatLine[] = [];
     private _contents: string = '';
-    private _cellRanges: ICellRange[] = [];
 
     public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams | undefined {
         this._version++;
         const changes: protocol.TextDocumentContentChangeEvent[] = [];
-        const cellIndex = this._cellRanges.findIndex((c) => c.uri.toString() === e.textDocument.uri);
-        const cell = cellIndex >= 0 ? this._cellRanges[cellIndex] : undefined;
-        if (cell) {
+        const notebookLines = this._notebookLines.filter((c) => c.uri.toString() === e.textDocument.uri);
+        const concatLines = this._concatlines.filter((c) => c.uri.toString() === e.textDocument.uri);
+        if (notebookLines.length > 0 && concatLines.length > 0) {
             e.edits.forEach((edit) => {
+                // Figure out just the matching lines
+                const matchingNotebookLines = notebookLines.filter(l => l.lineNumber >= edit.range.start.line && l.lineNumber < edit.range.end.line);
+                const matchingConcatLines = concatLines.filter(l => l.lineNumber >= edit.range.start.line && l.lineNumber < edit.range.end.line);
+
+                // Compute offsets for the range
+                const notebookStartOffset = matchingNotebookLines[0].offset + edit.range.start.character;
+                const concatStartOffset = matchingConcatLines[0].offset + edit.range.start.character;
+                const notebookEndOffset = matchingNotebookLines[matchingNotebookLines.length - 1].offset + edit.range.end.character;
+
+                // Get the text from the matching lines
+                const matchingNotebookText = matchingNotebookLines.join('\n');
+                const matchingConcatText = matchingConcatLines.join('\n');
+
+                // Convert text to remove \r
                 const normalized = edit.newText.replace(/\r/g, '');
+
+                // Apply the edit to our lines
+                const newNotebookText = `${matchingNotebookText.substring(0, notebookStartOffset)}${normalized}${matchingNotebookText.substring(notebookEndOffset)}`
+                
+                // Reapply transformations for these lines
+                const newConcatText = this.applyLineTransforms(newNotebookText);
+
+                // Now split lines and replace our original lines with new ones
+                const newNotebookLines = this.createCellLines(matchingNotebookLines[0].uri, newNotebookText, notebookStartOffset, matchingNotebookLines[0].lineNumber);
+                const newConcatLines = this.createCellLines(matchingNotebookLines[0].uri, newConcatText, concatStartOffset, matchingConcatLines[0].lineNumber);
+
+                // Compute end concat offset based on the last char in 
+                // await print() # type : ignore
+                // await purple()
+
+                this._notebookLines.splice(matchingNotebookLines[0].lineNumber, matchingNotebookLines.length, ...newNotebookLines);
+                this._concatlines.splice(matchingConcatLines[0].lineNumber, matchingConcatLines.length, ...newConcatLines);
+
+                // Update the lines after this with new offsets and line numbers
+                const notebookOffsetDiff = notebookStartOffset + newNotebookText.length - notebookEndOffset;
+                const notebookLineDiff = newNotebookLines.length - matchingNotebookLines.length;
+                const concatOffsetDiff = concatStartOffset + newConcatText.length - 
+
+
+
+                // Pull out the lines that matter. 
                 const position = this.positionAt(cell.startOffset);
                 const from = new vscode.Position(position.line + edit.range.start.line, edit.range.start.character);
                 const to = new vscode.Position(position.line + edit.range.end.line, edit.range.end.character);
@@ -101,7 +140,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const cellUri = vscode.Uri.parse(e.uri);
 
         // Make sure we don't already have this cell open
-        if (this._cellRanges.find((c) => c.uri.toString() == e.uri)) {
+        if (this._concatlines.find((c) => c.uri.toString() == e.uri)) {
             // Can't open twice
             return undefined;
         }
@@ -115,93 +154,111 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         // Make sure to put a newline between this code and the next code
         const newCode = `${e.text.replace(/\r/g, '')}\n`;
 
-        // Compute 'fragment' portion of URI. It's the tentative cell index
+        // Generate the concat code from this newCode
+        const concatCode = this.applyLineTransforms(newCode);
+
+        // Compute 'fragment' portion of URI. It's the tentative line index
         const fragment =
             cellUri.scheme === InteractiveInputScheme ? -1 : parseInt(cellUri.fragment.substring(2) || '0');
 
         // That fragment determines order in the list.
-        const insertIndex = this.computeInsertionIndex(fragment);
+        const notebookIndex = this.computeInsertionIndex(fragment);
 
-        // Compute where we start from.
-        const fromOffset =
-            insertIndex < this._cellRanges.length && insertIndex >= 0
-                ? this._cellRanges[insertIndex].startOffset
-                : this._contents.length;
+        // Use that index to find the same index in the concat list
+        const concatIndex =
+            notebookIndex >= 0 && notebookIndex < this._notebookLines.length
+                ? this._concatlines.findIndex(
+                      (c) => c.uri.toString() == this._notebookLines[notebookIndex].uri.toString()
+                  )
+                : this._concatlines.length;
 
-        // Split our text between the text and the cells above
-        const before = this._contents.substring(0, fromOffset);
-        const after = this._contents.substring(fromOffset);
-        const fromPosition = this.positionAt(fromOffset);
+        // Use indexes to compute start offset
+        const notebookOffset = notebookIndex > 0 ? this._notebookLines[notebookIndex - 1].endOffset : 0;
+        const concatOffset = concatIndex > 0 ? this._concatlines[concatIndex - 1].endOffset : 0;
 
-        // Update our entire contents and recompute our lines
-        this._contents = `${before}${newCode}${after}`;
-        this._lines = this.createLines();
+        // Use indexes to compute start line
+        const notebookLineNumber = notebookIndex > 0 ? this._notebookLines[notebookIndex - 1].lineNumber + 1 : 0;
+        const concatLineNumber = concatIndex > 0 ? this._concatlines[concatIndex - 1].lineNumber + 1 : 0;
 
-        // Move all the other cell ranges down
-        for (let i = insertIndex; i <= this._cellRanges.length - 1; i += 1) {
-            this._cellRanges[i].startOffset += newCode.length;
-            this._cellRanges[i].endOffset += newCode.length;
+        // Use index to compute from position
+        const fromPosition =
+            concatIndex > 0 ? this._concatlines[concatIndex - 1].range.start : new vscode.Position(concatLineNumber, 0);
+
+        // Generate new lines for the new text.
+        const notebookLines = this.createCellLines(cellUri, newCode, notebookOffset, notebookLineNumber);
+        const concatLines = this.createCellLines(cellUri, concatCode, concatOffset, concatLineNumber);
+
+        // Move all the other lines down
+        for (let i = notebookIndex; i < this._notebookLines.length; i += 1) {
+            this._notebookLines[i].offset += newCode.length;
+            this._notebookLines[i].lineNumber += notebookLines.length;
         }
-        const startOffset = fromOffset;
-        const endOffset = fromOffset + newCode.length;
-        this._cellRanges.splice(insertIndex, 0, {
-            uri: cellUri,
-            fragment,
-            startOffset,
-            endOffset,
-            startLine: this._lines.find((l) => l.offset === startOffset)?.lineNumber || 0
-        });
+        for (let i = concatIndex; i < this._concatlines.length; i += 1) {
+            this._concatlines[i].offset += concatCode.length;
+            this._concatlines[i].lineNumber += concatLines.length;
+        }
+
+        // Insert the new lines
+        this._notebookLines.splice(notebookIndex, 0, ...notebookLines);
+        this._notebookLines.splice(concatIndex, 0, ...concatLines);
 
         const changes: protocol.TextDocumentContentChangeEvent[] = [
             {
                 range: this.createSerializableRange(fromPosition, fromPosition),
-                rangeOffset: fromOffset,
+                rangeOffset: concatOffset,
                 rangeLength: 0, // Opens are always zero
-                text: newCode
+                text: concatCode
             } as any
         ];
         return this.toDidChangeTextDocumentParams(changes);
     }
 
     public handleClose(e: protocol.TextDocumentIdentifier): protocol.DidChangeTextDocumentParams | undefined {
-        const index = this._cellRanges.findIndex((c) => c.uri.toString() === e.uri);
+        const notebookIndex = this._notebookLines.findIndex((c) => c.uri.toString() === e.uri);
+        const notebookLastIndex = findLastIndex(this._notebookLines, (c) => c.uri.toString() === e.uri);
+        const concatIndex = this._concatlines.findIndex((c) => c.uri.toString() === e.uri);
+        const concatLastIndex = findLastIndex(this._concatlines, (c) => c.uri.toString() === e.uri);
 
         // Setup uri and such if a reopen.
         this.initialize(vscode.Uri.parse(e.uri));
 
         // Ignore unless in notebook mode. For interactive, cells are still there.
-        if (index >= 0 && !this._interactiveWindow) {
+        if (notebookIndex >= 0 && !this._interactiveWindow) {
             this._version += 1;
 
-            const found = this._cellRanges[index];
-            const foundLength = found.endOffset - found.startOffset;
-            const from = new vscode.Position(this.getLineFromOffset(found.startOffset), 0);
-            const to = this.positionAt(found.endOffset);
+            // Remove lines from both that all have the same URI
+            const fromPosition = this._concatlines[concatIndex].range.start;
+            const toPosition = this._concatlines[concatLastIndex].rangeIncludingLineBreak.end;
+            const fromOffset = this._concatlines[concatIndex].offset;
+            const notebookDiffOffset =
+                this._notebookLines[notebookLastIndex].endOffset - this._notebookLines[notebookIndex].offset;
+            const concatDiffOffset =
+                this._concatlines[concatLastIndex].endOffset - this._concatlines[concatIndex].offset;
 
-            // Remove from the cell ranges.
-            for (let i = index + 1; i <= this._cellRanges.length - 1; i += 1) {
-                this._cellRanges[i].startOffset -= foundLength;
-                this._cellRanges[i].endOffset -= foundLength;
+            this._notebookLines = this._notebookLines.filter((n) => n.uri.toString() !== e.uri);
+            this._concatlines = this._concatlines.filter((n) => n.uri.toString() !== e.uri);
+
+            // Index should be all the ones we need to update
+            for (let i = notebookIndex; i < this._notebookLines.length; i++) {
+                this._notebookLines[i].offset -= notebookDiffOffset;
+                this._notebookLines[i].lineNumber -= notebookLastIndex - notebookIndex;
             }
-            this._cellRanges.splice(index, 1);
-
-            // Recreate the contents
-            const before = this._contents.substring(0, found.startOffset);
-            const after = this._contents.substring(found.endOffset);
-            this._contents = `${before}${after}`;
-            this._lines = this.createLines();
+            for (let i = concatIndex; i < this._concatlines.length; i++) {
+                this._concatlines[i].offset -= concatDiffOffset;
+                this._concatlines[i].lineNumber -= concatLastIndex - concatIndex;
+            }
 
             const changes: protocol.TextDocumentContentChangeEvent[] = [
                 {
-                    range: this.createSerializableRange(from, to),
-                    rangeOffset: found.startOffset,
-                    rangeLength: foundLength,
+                    range: this.createSerializableRange(fromPosition, toPosition),
+                    rangeOffset: fromOffset,
+                    rangeLength: concatDiffOffset,
                     text: ''
                 } as any
             ];
 
             // If we closed the last cell, mark as closed
-            if (this._cellRanges.length == 0) {
+            if (this._notebookLines.length == 0) {
                 this._closed = true;
             }
             return this.toDidChangeTextDocumentParams(changes);
@@ -222,7 +279,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 this._version++;
                 this._cellRanges = [];
                 this._contents = newContents;
-                this._lines = this.createLines();
+                this._lines = this.createCellLines();
                 let startOffset = 0;
                 e.cells.forEach((c, i) => {
                     const cellText = normalizedCellText[i];
@@ -421,6 +478,20 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return lineCounter;
     }
 
+    private applyLineTransform(line: string): string {
+        for (let i = 0; i < LineTransforms.length; i++) {
+            if (LineTransforms[i].regex.test(line)) {
+                return line.replace(LineTransforms[i].regex, LineTransforms[i].replace);
+            }
+        }
+        return line;
+    }
+
+    private applyLineTransforms(content: string): string {
+        const lines = content.split('\n');
+        return lines.map((l) => this.applyLineTransform(l)).join('\n');
+    }
+
     private changeRange(
         newText: string,
         from: vscode.Position,
@@ -434,7 +505,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const before = this._contents.substring(0, fromOffset);
         const after = this._contents.substring(toOffset);
         this._contents = `${before}${newText}${after}`;
-        this._lines = this.createLines();
+        this._lines = this.createCellLines();
 
         // Update ranges after this. All should move by the diff in length, although the current one
         // should stay at the same start point.
@@ -456,26 +527,18 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         ];
     }
 
-    private createLines(): NotebookConcatLine[] {
-        const split = splitLines(this._contents, { trim: false, removeEmptyEntries: false });
-        let prevLine: NotebookConcatLine | undefined;
+    private createCellLines(
+        cellUri: vscode.Uri,
+        cellContent: string,
+        offset: number,
+        lineNumber: number
+    ): NotebookConcatLine[] {
+        const split = splitLines(cellContent, { trim: false, removeEmptyEntries: false });
         return split.map((s, i) => {
-            const nextLine = this.createTextLine(s, i, prevLine);
-            prevLine = nextLine;
+            const nextLine = new NotebookConcatLine(cellUri, offset, s, lineNumber + i);
+            offset += s.length;
             return nextLine;
         });
-    }
-
-    private createTextLine(
-        contents: string,
-        lineNumber: number,
-        prevLine: NotebookConcatLine | undefined
-    ): NotebookConcatLine {
-        return new NotebookConcatLine(
-            contents,
-            lineNumber,
-            prevLine ? prevLine.offset + prevLine.rangeIncludingLineBreak.end.character : 0
-        );
     }
 
     private convertToOffset(posOrLocation: vscode.Position | vscode.Location): number {
@@ -530,12 +593,13 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private computeInsertionIndex(fragment: number): number {
         // Remember if last cell is already the input box
-        const inputBoxPresent = this._cellRanges[this._cellRanges.length - 1]?.uri.scheme === InteractiveInputScheme;
-        const totalLength = inputBoxPresent ? this._cellRanges.length - 1 : this._cellRanges.length;
+        const inputBoxPresent =
+            this._notebookLines[this._notebookLines.length - 1]?.uri.scheme === InteractiveInputScheme;
+        const totalLength = inputBoxPresent ? this._notebookLines.length - 1 : this._notebookLines.length;
 
         // Find index based on fragment
         const index =
-            fragment == -1 ? this._cellRanges.length : this._cellRanges.findIndex((c) => c.fragment > fragment);
+            fragment == -1 ? this._notebookLines.length : this._notebookLines.findIndex((c) => c.fragment > fragment);
         return index < 0 ? totalLength : index;
     }
 
