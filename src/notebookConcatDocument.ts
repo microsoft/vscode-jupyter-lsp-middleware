@@ -6,14 +6,7 @@ import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
 import * as shajs from 'sha.js';
-import {
-    InteractiveInputScheme,
-    InteractiveScheme,
-    isInteractiveCell,
-    NotebookScheme,
-    PYTHON_LANGUAGE,
-    splitLines
-} from './common/utils';
+import { InteractiveInputScheme, isInteractiveCell, PYTHON_LANGUAGE, splitLines } from './common/utils';
 import {
     DefaultWordPattern,
     ensureValidWordDefinition,
@@ -551,9 +544,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 `${NotebookConcatPrefix}${shajs('sha1').update(cellUri.fsPath).digest('hex').substring(0, 12)}.py`
             );
             this._concatUri = vscode.Uri.file(concatFilePath);
-            this._notebookUri = vscode.Uri.parse(
-                `${this._interactiveWindow ? InteractiveScheme : NotebookScheme}://${cellUri.fsPath}`
-            );
+            this._notebookUri = vscode.Uri.file(cellUri.fsPath);
         }
     }
 }
