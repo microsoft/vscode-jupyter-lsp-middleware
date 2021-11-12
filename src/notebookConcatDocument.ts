@@ -556,3 +556,11 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         }
     }
 }
+
+// Thoughts:
+// Replace contents with using lines. Lines have real content and concat content
+// Lines dynamically replace based on contents? What if it spans more than one line? (Insert extra lines?)
+// Get rid of cell ranges?
+// handleOpen - scan content and generate lines from it.
+// handleChange - figure out which lines need to be recreated, dynamically update content based on real contents
+// replacements can be done with regex array with replacement text
