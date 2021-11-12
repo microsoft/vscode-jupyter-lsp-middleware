@@ -1,6 +1,6 @@
 {
     "name": "@vscode/jupyter-lsp-middleware",
-    "version": "0.2.22",
+    "version": "0.2.23",
     "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
