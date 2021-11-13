@@ -10,7 +10,13 @@ export class NotebookConcatLine implements vscode.TextLine {
     private _firstNonWhitespaceIndex: number | undefined;
     private _isEmpty: boolean | undefined;
 
-    constructor(private _contents: string, private _line: number, private _offset: number) {
+    constructor(
+        public cellUri: vscode.Uri,
+        private _contents: string,
+        private _line: number,
+        private _notebookLineNumber: number,
+        private _offset: number
+    ) {
         this._range = new vscode.Range(new vscode.Position(_line, 0), new vscode.Position(_line, _contents.length));
         this._rangeWithLineBreak = new vscode.Range(this.range.start, new vscode.Position(_line, _contents.length + 1));
     }
@@ -22,6 +28,9 @@ export class NotebookConcatLine implements vscode.TextLine {
     }
     public get lineNumber(): number {
         return this._line;
+    }
+    public get notebookLineNumber(): number {
+        return this._notebookLineNumber;
     }
     public get text(): string {
         return this._contents;

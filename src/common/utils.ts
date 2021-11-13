@@ -65,3 +65,12 @@ export function splitLines(
 export function score(document: TextDocument, selector: DocumentSelector): number {
     return languages.match(selector, document);
 }
+
+export function findLastIndex<T>(array: Array<T>, predicate: (e: T) => boolean) {
+    for (let i = array.length - 1; i >= 0; i--) {
+        if (predicate(array[i])) {
+            return i;
+        }
+    }
+    return -1;
+}
