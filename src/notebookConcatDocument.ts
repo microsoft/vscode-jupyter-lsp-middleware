@@ -11,7 +11,8 @@ import {
     InteractiveInputScheme,
     InteractiveScheme,
     isInteractiveCell,
-    PYTHON_LANGUAGE
+    PYTHON_LANGUAGE,
+    splitLines
 } from './common/utils';
 import {
     DefaultWordPattern,
@@ -34,7 +35,7 @@ type NotebookSpan = {
     realText: string;
 };
 
-const TypeIgnoreAddition = ' # type : ignore\n';
+const TypeIgnoreAddition = ' # type: ignore\n';
 
 const TypeIgnoreTransforms = [{ regex: /(^\s*%.*)/g }, { regex: /(^\s*!.*)/g }, { regex: /(^\s*await\s+.*)/g }];
 
@@ -99,10 +100,10 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 const oldText = oldSpans.map((s) => s.text).join('');
 
                 // Apply the edit to the real spans
-                const realText = this.getRealText(oldSpans[index].uri);
-                const realLines = this._realLines.filter((r) => r.cellUri.toString() === e.textDocument.uri);
-                const startOffset = realLines[edit.range.start.line].offset + edit.range.start.character;
-                const endOffset = realLines[edit.range.end.line].offset + edit.range.end.character;
+                const realText = this.getRealText(oldSpans[0].uri);
+                const realCellLines = this._realLines.filter((r) => r.cellUri.toString() === e.textDocument.uri);
+                const startOffset = realCellLines[edit.range.start.line].offset + edit.range.start.character;
+                const endOffset = realCellLines[edit.range.end.line].offset + edit.range.end.character;
                 const editedText = `${realText.slice(0, startOffset)}${edit.newText}${realText.slice(endOffset)}`;
 
                 // Create new spans from the edited text
@@ -246,7 +247,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 range: this.createSerializableRange(fromPosition, fromPosition),
                 rangeOffset: fromOffset,
                 rangeLength: 0, // Opens are always zero
-                text: newCode
+                text: newSpans.map((s) => s.text).join('')
             } as any
         ];
         return this.toDidChangeTextDocumentParams(changes);
@@ -313,6 +314,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             const newContents = `${normalizedCellText.join('\n')}\n`;
             if (newContents != oldContents) {
                 this._version++;
+                this._closed = false;
                 this._spans = [];
                 this._lines = [];
 
@@ -378,12 +380,12 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     }
 
     public concatPositionAt(location: vscode.Location): vscode.Position {
-        // Range is range inside of a cell
-        const span = this._spans.find((s) => s.uri.toString() === location.uri.toString());
+        // Find first real line of the cell (start line needs to be added to this)
+        const firstRealLine = this._realLines.find((r) => r.cellUri.toString() === location.uri.toString());
 
-        if (span) {
+        if (firstRealLine) {
             // Line number is inside a real line
-            const realLine = this._realLines[location.range.start.line];
+            const realLine = this._realLines[location.range.start.line + firstRealLine.lineNumber];
 
             // Convert real line offset to outgoing offset
             const outgoingOffset = this.mapRealToConcatOffset(realLine.offset + location.range.start.character);
@@ -397,12 +399,12 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return new vscode.Position(0, 0);
     }
 
-    public outgoingOffsetAt(location: vscode.Location): number {
+    public concatOffsetAt(location: vscode.Location): number {
         // Location is inside of a cell
-        const span = this._spans.find((s) => s.uri.toString() === location.uri.toString());
-        if (span) {
+        const firstRealLine = this._realLines.find((r) => r.cellUri.toString() === location.uri.toString());
+        if (firstRealLine) {
             // Line number is inside a real line
-            const realLine = this._realLines[location.range.start.line];
+            const realLine = this._realLines[location.range.start.line + firstRealLine.lineNumber];
 
             // Use its offset (real offset) to find our outgoing offset
             return this.mapRealToConcatOffset(realLine.offset + location.range.start.character);
@@ -433,37 +435,30 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
         // Concat range is easy, it's the actual line numbers.
         const startLine = this._lines[positionOrRange.start.line];
-        const endLine = this._lines[positionOrRange.end.line];
-
-        const startPosition = new vscode.Position(startLine.lineNumber, positionOrRange.start.character);
-        const endPosition = new vscode.Position(endLine.lineNumber, positionOrRange.end.character);
-
         return {
             uri: startLine.cellUri,
-            range: new vscode.Range(this.incomingPositionAt(startPosition), this.incomingPositionAt(endPosition))
+            range: new vscode.Range(
+                this.notebookPositionAt(positionOrRange.start),
+                this.notebookPositionAt(positionOrRange.end)
+            )
         };
     }
 
-    public incomingPositionAt(outgoingPosition: vscode.Position) {
-        // Find offset of position.
-        const offset = this._lines[outgoingPosition.line].offset + outgoingPosition.character;
-
-        // Convert to the closest real offset
-        const realOffset = this.mapConcatToClosestRealOffset(offset);
-
-        // Use that offset to find what cell it might be in.
-        const span = this._spans.find((s) => realOffset >= s.realOffset && realOffset < s.realEndOffset);
-        const firstSpan = this._spans.find((s) => s.uri.toString() === span?.uri.toString());
-
-        // Find the real line with that offset
+    public notebookPositionAt(outgoingPosition: vscode.Position) {
+        // Map the concat line to the real line
+        const lineOffset = this._lines[outgoingPosition.line].offset;
+        const realOffset = this.mapConcatToClosestRealOffset(lineOffset);
         const realLine = this._realLines.find((r) => realOffset >= r.offset && realOffset < r.endOffset);
-        const firstRealLine = firstSpan
-            ? this._realLines.find((r) => firstSpan?.realOffset >= r.offset && firstSpan?.realOffset < r.endOffset)
-            : undefined;
+
+        // Find the first line of the same uri
+        const firstRealLine = this._realLines.find((r) => r.cellUri.toString() === realLine?.cellUri.toString());
 
         // firstRealLine is the first real line of the cell. It has the relative line number
         const startLine = firstRealLine && realLine ? realLine.lineNumber - firstRealLine.lineNumber : 0;
-        const startChar = realLine ? realOffset - realLine.offset : 0;
+
+        // Character offset has to be mapped too
+        const charOffset = this.mapConcatToClosestRealOffset(lineOffset + outgoingPosition.character);
+        const startChar = charOffset - (realLine?.offset || 0);
 
         return new vscode.Position(startLine, startChar);
     }
@@ -544,7 +539,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private mapRealToConcatOffset(realOffset: number): number {
         // Find the real span that has this offset
-        const realSpan = this._spans.find((r) => realOffset >= r.realOffset && realOffset <= r.realEndOffset);
+        const realSpan = this._spans.find((r) => realOffset >= r.realOffset && realOffset < r.realEndOffset);
         if (realSpan) {
             // If we found a match, add the diff. Note if we have a real span
             // that means any 'real' offset it in it is not part of a split
@@ -555,7 +550,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private mapConcatToClosestRealOffset(concatOffset: number): number {
         // Find the concat span that has this offset
-        const concatSpan = this._spans.find((r) => concatOffset >= r.startOffset && concatOffset <= r.endOffset);
+        const concatSpan = this._spans.find((r) => concatOffset >= r.startOffset && concatOffset < r.endOffset);
         if (concatSpan) {
             // Diff is into the concat span
             const diff = concatOffset - concatSpan.startOffset;
@@ -573,7 +568,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private concatPositionOf(offset: number): vscode.Position {
         // Find line that has this offset
-        const line = this._lines.find((l) => offset >= l.offset && offset <= l.endOffset);
+        const line = this._lines.find((l) => offset >= l.offset && offset < l.endOffset);
         return line ? line.range.start : new vscode.Position(0, 0);
     }
 
@@ -634,37 +629,43 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private createSpans(cellUri: vscode.Uri, text: string, offset: number, realOffset: number): NotebookSpan[] {
         // Go through each line, gathering up spans
-        const lines = text.split(/\r?\n/g);
+        const lines = splitLines(text);
         const spans: NotebookSpan[] = [];
-        let currentText = '';
+        let textOffset = 0;
         lines.forEach((l) => {
-            currentText = `${currentText}${l}`;
-
             if (TypeIgnoreTransforms.find((transform) => transform.regex.test(l))) {
                 // This means up to the current text needs to be turned into a span
-                spans.push(this.createSpan(cellUri, currentText, `${currentText}\n`, offset, realOffset));
-
-                // Then push after that a TypeIgnoreSpan
                 spans.push(
-                    this.createTypeIgnoreSpan(cellUri, offset + currentText.length, realOffset + currentText.length)
+                    this.createSpan(
+                        cellUri,
+                        text.substring(0, textOffset + l.length),
+                        text.substring(0, textOffset + l.length + 1),
+                        offset,
+                        realOffset
+                    )
                 );
 
-                // Current text is reset as we just output a span
-                currentText = '';
+                // Offset moves by the line length (and line length + 1 for real)
+                offset += l.length;
+                realOffset += l.length + 1;
+                textOffset += l.length + 1;
 
-                // Offset moves to end of the last span
+                // Then push after that a TypeIgnoreSpan
+                spans.push(this.createTypeIgnoreSpan(cellUri, offset, realOffset));
+
+                // Update offset using last span (length of type ignore)
                 offset = spans[spans.length - 1].endOffset;
-                realOffset = spans[spans.length - 1].realEndOffset + 1; // +1 for the \n
-            } else {
-                // Otherwise update current text to have the line ending and loop around
-                // Offset stays the same (it's the beginning of the next span)
-                currentText = `${currentText}\n`;
+
+                // Real offset doesn't move because Type ignore span is
+                // not in the real code
             }
         });
 
-        // Add final span if any text
-        if (currentText.length > 0) {
-            spans.push(this.createSpan(cellUri, currentText, `${currentText}\n`, offset, realOffset));
+        // Add final span if any text leftover
+        if (textOffset < text.length) {
+            spans.push(
+                this.createSpan(cellUri, text.substring(textOffset), text.substring(textOffset), offset, realOffset)
+            );
         }
 
         return spans;
@@ -683,50 +684,34 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             .join('');
     }
 
-    private computeLines() {
-        // Create lines from the spans
-        let concatCell = '';
-        let realCell = '';
-        let prevUri: vscode.Uri | undefined;
-        let prevConcatLine: NotebookConcatLine | undefined;
-        let prevRealLine: NotebookConcatLine | undefined;
-        this._lines = [];
-        this._realLines = [];
-        this._spans.forEach((span, index) => {
-            // Concat the spans for this cell together
-            concatCell = `${concatCell}${span.text}`;
-            realCell = `${realCell}${span.realText}`;
-
-            // If a new uri (or last span), then create the lines for the code in this cell
-            if (prevUri?.toString() != span.uri.toString() || index == this._spans.length - 1) {
-                const lineUri = index == this._spans.length - 1 ? span.uri : prevUri;
-                let split = concatCell.split(/\r?\n/g);
-                this._lines.push(
-                    ...split.map((s) => {
-                        const nextLine = this.createTextLine(lineUri!, s, prevConcatLine);
-                        prevConcatLine = nextLine;
-                        return nextLine;
-                    })
-                );
-
-                // Split the real code too (if there is any)
-                if (realCell.length > 0) {
-                    split = realCell.split(/\r?\n/g);
-                    this._realLines.push(
-                        ...split.map((s) => {
-                            const nextLine = this.createTextLine(lineUri!, s, prevRealLine);
-                            prevRealLine = nextLine;
-                            return nextLine;
-                        })
-                    );
-                }
-
-                // Start concat over again
-                concatCell = '';
-                realCell = '';
-                prevUri = span.uri;
-            }
+    private createTextLines(uri: vscode.Uri, cell: string, prev: NotebookConcatLine | undefined) {
+        const split = splitLines(cell);
+        return split.map((s) => {
+            const nextLine = this.createTextLine(uri, s, prev);
+            prev = nextLine;
+            return nextLine;
         });
+    }
+
+    private computeLinesUsingFunc(uris: vscode.Uri[], func: (span: NotebookSpan) => string): NotebookConcatLine[] {
+        const results: NotebookConcatLine[] = [];
+        let prevLine: NotebookConcatLine | undefined;
+        uris.forEach((uri) => {
+            const cell = this._spans
+                .filter((s) => s.uri.toString() == uri.toString())
+                .map(func)
+                .join('');
+            results.push(...this.createTextLines(uri, cell, prevLine));
+            prevLine = results[results.length - 1];
+        });
+        return results;
+    }
+
+    private computeLines() {
+        // Turn the spans into their cell counterparts
+        const uris = this.getCells();
+        this._lines = this.computeLinesUsingFunc(uris, (s) => s.text);
+        this._realLines = this.computeLinesUsingFunc(uris, (s) => s.realText);
     }
 
     private createTextLine(
