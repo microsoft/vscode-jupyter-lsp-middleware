@@ -181,7 +181,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // Just close the document. This should cause diags and other things to be cleared
         const client = this.getClient();
         if (client && notebook.cellCount > 0) {
-            const outgoing = this.converter.toOutgoingDocument(notebook.cellAt(0).document);
+            const outgoing = this.converter.toConcatDocument(notebook.cellAt(0).document);
             const params = client.code2ProtocolConverter.asCloseTextDocumentParams(outgoing);
             client.sendNotification(DidCloseTextDocumentNotification.type, params);
 
@@ -224,7 +224,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const params = this.converter.handleChange(event);
             if (!sentOpen) {
                 // First time opening, send an open instead
-                const newDoc = this.converter.toOutgoingDocument(event.document);
+                const newDoc = this.converter.toConcatDocument(event.document);
                 const params = client.code2ProtocolConverter.asOpenTextDocumentParams(newDoc);
                 client.sendNotification(DidOpenTextDocumentNotification.type, params);
             } else if (params) {
@@ -244,7 +244,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
             // If first time opening, just send the initial doc
             if (!sentOpen) {
-                const newDoc = this.converter.toOutgoingDocument(document);
+                const newDoc = this.converter.toConcatDocument(document);
                 next(newDoc);
             } else if (params) {
                 // Otherwise send a change event
@@ -269,7 +269,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const isClosed = !this.converter.isOpen(document);
             if (isClosed && wasOpen) {
                 // All cells deleted, send a close notification
-                const newDoc = this.converter.toOutgoingDocument(document);
+                const newDoc = this.converter.toConcatDocument(document);
                 next(newDoc);
             } else if (!isClosed && params) {
                 // Otherwise we changed the document by deleting cells.
@@ -308,13 +308,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideCompletionItemsSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, context, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCompletions.bind(this.converter, document));
+                return result.then(this.converter.toNotebookCompletions.bind(this.converter, document));
             }
-            return this.converter.toIncomingCompletions(document, result);
+            return this.converter.toNotebookCompletions(document, result);
         }
     }
 
@@ -326,13 +326,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideHoverSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingHover.bind(this.converter, document));
+                return result.then(this.converter.toNotebookHover.bind(this.converter, document));
             }
-            return this.converter.toIncomingHover(document, result);
+            return this.converter.toNotebookHover(document, result);
         }
     }
 
@@ -357,8 +357,8 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideSignatureHelpSignature
     ): ProviderResult<SignatureHelp> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             return next(newDoc, newPos, context, token);
         }
     }
@@ -370,13 +370,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideDefinitionSignature
     ): ProviderResult<Definition | DefinitionLink[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+                return result.then(this.converter.toNotebookLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(result);
+            return this.converter.toNotebookLocations(result);
         }
     }
 
@@ -390,13 +390,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideReferencesSignature
     ): ProviderResult<Location[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, options, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+                return result.then(this.converter.toNotebookLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(result);
+            return this.converter.toNotebookLocations(result);
         }
     }
 
@@ -407,13 +407,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideDocumentHighlightsSignature
     ): ProviderResult<DocumentHighlight[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingHighlight.bind(this.converter, document));
+                return result.then(this.converter.toNotebookHighlight.bind(this.converter, document));
             }
-            return this.converter.toIncomingHighlight(document, result);
+            return this.converter.toNotebookHighlight(document, result);
         }
     }
 
@@ -423,12 +423,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideDocumentSymbolsSignature
     ): ProviderResult<SymbolInformation[] | DocumentSymbol[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
+            const newDoc = this.converter.toConcatDocument(document);
             const result = next(newDoc, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSymbols.bind(this.converter, document));
+                return result.then(this.converter.toNotebookSymbols.bind(this.converter, document));
             }
-            return this.converter.toIncomingSymbols(document, result);
+            return this.converter.toNotebookSymbols(document, result);
         }
     }
 
@@ -440,9 +440,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // Is this one possible to check?
         const result = next(query, token);
         if (isThenable(result)) {
-            return result.then(this.converter.toIncomingWorkspaceSymbols.bind(this.converter));
+            return result.then(this.converter.toNotebookWorkspaceSymbols.bind(this.converter));
         }
-        return this.converter.toIncomingWorkspaceSymbols(result);
+        return this.converter.toNotebookWorkspaceSymbols(result);
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -585,7 +585,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
-        const incomingUri = this.converter.toIncomingUri(uri);
+        const incomingUri = this.converter.toNotebookUri(uri);
         if (
             incomingUri &&
             incomingUri != uri &&
@@ -595,7 +595,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
             // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
             // Otherwise old messages for cells that didn't change this time won't go away.
-            const newDiagMapping = this.converter.toIncomingDiagnosticsMap(uri, diagnostics);
+            const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri, diagnostics);
             [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
         } else {
             // Swallow all other diagnostics
@@ -610,13 +610,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideTypeDefinitionSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+                return result.then(this.converter.toNotebookLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(result);
+            return this.converter.toNotebookLocations(result);
         }
     }
 
@@ -627,13 +627,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideImplementationSignature
     ): ProviderResult<Definition | DefinitionLink[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+                return result.then(this.converter.toNotebookLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(result);
+            return this.converter.toNotebookLocations(result);
         }
     }
 
@@ -643,12 +643,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideDocumentColorsSignature
     ): ProviderResult<ColorInformation[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
+            const newDoc = this.converter.toConcatDocument(document);
             const result = next(newDoc, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingColorInformations.bind(this.converter, document.uri));
+                return result.then(this.converter.toNotebookColorInformations.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingColorInformations(document.uri, result);
+            return this.converter.toNotebookColorInformations(document.uri, result);
         }
     }
     public provideColorPresentations(
@@ -661,15 +661,15 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideColorPresentationSignature
     ): ProviderResult<ColorPresentation[]> {
         if (this.shouldProvideIntellisense(context.document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(context.document);
-            const newRange = this.converter.toOutgoingRange(context.document, context.range);
+            const newDoc = this.converter.toConcatDocument(context.document);
+            const newRange = this.converter.toConcatRange(context.document, context.range);
             const result = next(color, { document: newDoc, range: newRange }, token);
             if (isThenable(result)) {
                 return result.then(
-                    this.converter.toIncomingColorPresentations.bind(this.converter, context.document.uri)
+                    this.converter.toNotebookColorPresentations.bind(this.converter, context.document.uri)
                 );
             }
-            return this.converter.toIncomingColorPresentations(context.document.uri, result);
+            return this.converter.toNotebookColorPresentations(context.document.uri, result);
         }
     }
 
@@ -680,12 +680,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideFoldingRangeSignature
     ): ProviderResult<FoldingRange[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
+            const newDoc = this.converter.toConcatDocument(document);
             const result = next(newDoc, context, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingFoldingRanges.bind(this.converter, document.uri));
+                return result.then(this.converter.toNotebookFoldingRanges.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingFoldingRanges(document.uri, result);
+            return this.converter.toNotebookFoldingRanges(document.uri, result);
         }
     }
 
@@ -696,13 +696,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideDeclarationSignature
     ): ProviderResult<Declaration> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPos = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPos = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPos, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLocations.bind(this.converter));
+                return result.then(this.converter.toNotebookLocations.bind(this.converter));
             }
-            return this.converter.toIncomingLocations(result);
+            return this.converter.toNotebookLocations(result);
         }
     }
 
@@ -713,13 +713,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideSelectionRangeSignature
     ): ProviderResult<SelectionRange[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPositions = this.converter.toOutgoingPositions(document, positions);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPositions = this.converter.toConcatPositions(document, positions);
             const result = next(newDoc, newPositions, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSelectionRanges.bind(this.converter, document.uri));
+                return result.then(this.converter.toNotebookSelectionRanges.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingSelectionRanges(document.uri, result);
+            return this.converter.toNotebookSelectionRanges(document.uri, result);
         }
     }
 
@@ -730,13 +730,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: PrepareCallHierarchySignature
     ): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPositions = this.converter.toOutgoingPosition(document, positions);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPositions = this.converter.toConcatPosition(document, positions);
             const result = next(newDoc, newPositions, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingCallHierarchyItems.bind(this.converter, document.uri));
+                return result.then(this.converter.toNotebookCallHierarchyItems.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingCallHierarchyItems(document.uri, result);
+            return this.converter.toNotebookCallHierarchyItems(document.uri, result);
         }
     }
     public provideCallHierarchyIncomingCalls(
@@ -745,15 +745,15 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: CallHierarchyIncomingCallsSignature
     ): ProviderResult<CallHierarchyIncomingCall[]> {
         if (this.shouldProvideIntellisense(item.uri)) {
-            const newUri = this.converter.toOutgoingUri(item.uri);
-            const newRange = this.converter.toOutgoingRange(item.uri, item.range);
+            const newUri = this.converter.toConcatUri(item.uri);
+            const newRange = this.converter.toConcatRange(item.uri, item.range);
             const result = next({ ...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
                 return result.then(
-                    this.converter.toIncomingCallHierarchyIncomingCallItems.bind(this.converter, item.uri)
+                    this.converter.toNotebookCallHierarchyIncomingCallItems.bind(this.converter, item.uri)
                 );
             }
-            return this.converter.toIncomingCallHierarchyIncomingCallItems(item.uri, result);
+            return this.converter.toNotebookCallHierarchyIncomingCallItems(item.uri, result);
         }
     }
     public provideCallHierarchyOutgoingCalls(
@@ -762,15 +762,15 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: CallHierarchyOutgoingCallsSignature
     ): ProviderResult<CallHierarchyOutgoingCall[]> {
         if (this.shouldProvideIntellisense(item.uri)) {
-            const newUri = this.converter.toOutgoingUri(item.uri);
-            const newRange = this.converter.toOutgoingRange(item.uri, item.range);
+            const newUri = this.converter.toConcatUri(item.uri);
+            const newRange = this.converter.toConcatRange(item.uri, item.range);
             const result = next({ ...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
                 return result.then(
-                    this.converter.toIncomingCallHierarchyOutgoingCallItems.bind(this.converter, item.uri)
+                    this.converter.toNotebookCallHierarchyOutgoingCallItems.bind(this.converter, item.uri)
                 );
             }
-            return this.converter.toIncomingCallHierarchyOutgoingCallItems(item.uri, result);
+            return this.converter.toNotebookCallHierarchyOutgoingCallItems(item.uri, result);
         }
     }
 
@@ -781,10 +781,10 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     ): ProviderResult<SemanticTokens> {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
-            const newDoc = this.converter.toOutgoingDocument(document);
+            const newDoc = this.converter.toConcatDocument(document);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
-            const newRange = this.converter.toOutgoingRange(document.uri, undefined);
+            const newRange = this.converter.toConcatRange(document.uri, undefined);
 
             const params: SemanticTokensRangeParams = {
                 textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
@@ -797,7 +797,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             // Then convert from protocol back to vscode types
             return result.then((r) => {
                 const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
-                return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
+                return this.converter.toNotebookSemanticTokens(document.uri, vscodeTokens);
             });
         }
     }
@@ -812,10 +812,10 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         // Instead just ask for a range.
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
-            const newDoc = this.converter.toOutgoingDocument(document);
+            const newDoc = this.converter.toConcatDocument(document);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
-            const newRange = this.converter.toOutgoingRange(document.uri, undefined);
+            const newRange = this.converter.toConcatRange(document.uri, undefined);
 
             const params: SemanticTokensRangeParams = {
                 textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
@@ -828,7 +828,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             // Then convert from protocol back to vscode types
             return result.then((r) => {
                 const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
-                return this.converter.toIncomingSemanticTokens(document.uri, vscodeTokens);
+                return this.converter.toNotebookSemanticTokens(document.uri, vscodeTokens);
             });
         }
     }
@@ -839,13 +839,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: DocumentRangeSemanticTokensSignature
     ): ProviderResult<SemanticTokens> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newRange = this.converter.toOutgoingRange(document, range);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newRange = this.converter.toConcatRange(document, range);
             const result = next(newDoc, newRange, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingSemanticTokens.bind(this.converter, document.uri));
+                return result.then(this.converter.toNotebookSemanticTokens.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingSemanticTokens(document.uri, result);
+            return this.converter.toNotebookSemanticTokens(document.uri, result);
         }
     }
 
@@ -856,13 +856,13 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         next: ProvideLinkedEditingRangeSignature
     ): ProviderResult<LinkedEditingRanges> {
         if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toOutgoingDocument(document);
-            const newPosition = this.converter.toOutgoingPosition(document, position);
+            const newDoc = this.converter.toConcatDocument(document);
+            const newPosition = this.converter.toConcatPosition(document, position);
             const result = next(newDoc, newPosition, token);
             if (isThenable(result)) {
-                return result.then(this.converter.toIncomingLinkedEditingRanges.bind(this.converter, document.uri));
+                return result.then(this.converter.toNotebookLinkedEditingRanges.bind(this.converter, document.uri));
             }
-            return this.converter.toIncomingLinkedEditingRanges(document.uri, result);
+            return this.converter.toNotebookLinkedEditingRanges(document.uri, result);
         }
     }
 

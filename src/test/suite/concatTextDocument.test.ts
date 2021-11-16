@@ -151,64 +151,64 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'print("bar")');
 
                 assert.strictEqual(
-                    concat.incomingLocationAt(new Position(0, 0)).uri.toString(),
+                    concat.notebookLocationAt(new Position(0, 0)).uri.toString(),
                     notebookDocument.getCells()[0].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.incomingLocationAt(new Position(1, 0)).uri.toString(),
+                    concat.notebookLocationAt(new Position(1, 0)).uri.toString(),
                     notebookDocument.getCells()[2].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.incomingLocationAt(new Position(2, 0)).uri.toString(),
+                    concat.notebookLocationAt(new Position(2, 0)).uri.toString(),
                     notebookDocument.getCells()[2].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.incomingLocationAt(new Position(3, 0)).uri.toString(),
+                    concat.notebookLocationAt(new Position(3, 0)).uri.toString(),
                     inputDocument.uri.toString()
                 );
 
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(
+                    concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 0))
                     ),
                     new Position(0, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(
+                    concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 3))
                     ),
                     new Position(0, 3)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(
+                    concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(0, 0))
                     ),
                     new Position(1, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(
+                    concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(0, 3))
                     ),
                     new Position(1, 3)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(
+                    concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(1, 0))
                     ),
                     new Position(2, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(
+                    concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(1, 3))
                     ),
                     new Position(2, 3)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(new Location(inputDocument.uri, new Position(0, 0))),
+                    concat.concatPositionAt(new Location(inputDocument.uri, new Position(0, 0))),
                     new Position(3, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.outgoingPositionAt(new Location(inputDocument.uri, new Position(0, 3))),
+                    concat.concatPositionAt(new Location(inputDocument.uri, new Position(0, 3))),
                     new Position(3, 3)
                 );
             }
@@ -242,7 +242,7 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'print("bar")');
                 assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'p.');
 
-                assert.deepStrictEqual(concat.incomingLocationAt(new Position(4, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(concat.notebookLocationAt(new Position(4, 2)).range, new Range(1, 2, 1, 2));
             }
         );
     });
@@ -267,7 +267,7 @@ suite('concatTextDocument', () => {
                 // assert.strictEqual(concat.lineAt(3).text, 'print("bar")');
                 // assert.strictEqual(concat.lineAt(4).text, 'p.');
 
-                assert.deepStrictEqual(concat.incomingLocationAt(new Position(1, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(concat.notebookLocationAt(new Position(1, 2)).range, new Range(1, 2, 1, 2));
             }
         );
     });

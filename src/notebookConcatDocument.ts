@@ -377,7 +377,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         }
     }
 
-    public outgoingPositionAt(location: vscode.Location): vscode.Position {
+    public concatPositionAt(location: vscode.Location): vscode.Position {
         // Range is range inside of a cell
         const span = this._spans.find((s) => s.uri.toString() === location.uri.toString());
 
@@ -410,7 +410,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return 0;
     }
 
-    public outgoingRangeOf(cellUri: vscode.Uri) {
+    public concatRangeOf(cellUri: vscode.Uri) {
         const index = this._spans.findIndex((c) => c.uri.toString() === cellUri.toString());
         const lastIndex = findLastIndex(this._spans, (c) => c.uri.toString() === cellUri.toString());
         const startOffset = index >= 0 ? this._spans[index].startOffset : 0;
@@ -425,7 +425,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return [...new Set(this._spans.map((c) => c.uri))];
     }
 
-    public incomingLocationAt(positionOrRange: vscode.Range | vscode.Position): vscode.Location {
+    public notebookLocationAt(positionOrRange: vscode.Range | vscode.Position): vscode.Location {
         // positionOrRange should be in concat ranges
         if (positionOrRange instanceof vscode.Position) {
             positionOrRange = new vscode.Range(positionOrRange, positionOrRange);
@@ -468,7 +468,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return new vscode.Position(startLine, startChar);
     }
 
-    public incomingOffsetAt(cellUri: vscode.Uri, concatOffset: number) {
+    public notebookOffsetAt(cellUri: vscode.Uri, concatOffset: number) {
         // Convert the offset to the real offset
         const realOffset = this.mapConcatToClosestRealOffset(concatOffset);
 
