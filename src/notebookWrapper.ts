@@ -85,14 +85,11 @@ export class NotebookWrapper implements vscode.Disposable {
     public getText(range?: vscode.Range) {
         return this.concatDocument.getText(range);
     }
-    public locationAt(positionOrRange: vscode.Range | vscode.Position) {
-        return this.concatDocument.locationAt(positionOrRange);
+    public incomingLocationAt(positionOrRange: vscode.Range | vscode.Position) {
+        return this.concatDocument.incomingLocationAt(positionOrRange);
     }
-    public positionAt(offsetOrPosition: number | vscode.Position | vscode.Location) {
-        return this.concatDocument.positionAt(offsetOrPosition);
-    }
-    public offsetAt(position: vscode.Position | vscode.Location) {
-        return this.concatDocument.offsetAt(position);
+    public outgoingPositionAt(location: vscode.Location) {
+        return this.concatDocument.outgoingPositionAt(location);
     }
     public getConcatDocument(): vscode.TextDocument {
         return this.concatDocument;
@@ -100,10 +97,10 @@ export class NotebookWrapper implements vscode.Disposable {
     public contains(cellUri: vscode.Uri) {
         return this.concatDocument.contains(cellUri);
     }
-    public rangeOf(cellUri: vscode.Uri) {
-        return this.concatDocument.rangeOf(cellUri);
+    public outgoingRangeOf(cellUri: vscode.Uri) {
+        return this.concatDocument.outgoingRangeOf(cellUri);
     }
-    public cellOffsetAt(offset: number) {
-        return this.concatDocument.cellOffsetAt(offset);
+    public incomingOffsetAt(cellUri: vscode.Uri, offset: number) {
+        return this.concatDocument.incomingOffsetAt(cellUri, offset);
     }
 }

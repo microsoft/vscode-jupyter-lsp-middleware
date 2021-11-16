@@ -144,12 +144,9 @@ export class NotebookConverter implements Disposable {
                 .forEach((cellUri) => result.set(Uri.parse(cellUri), []));
             this.mapOfConcatDocumentsWithCellUris.set(uri.toString(), cellUris);
 
-            // Filter out any diagnostics that have to do with magics or shell escapes
-            var filtered = diagnostics.filter(this.filterMagics.bind(this, wrapper));
-
             // Then for all the new ones, set their values.
-            filtered.forEach((d) => {
-                const location = wrapper.locationAt(d.range);
+            diagnostics.forEach((d) => {
+                const location = wrapper.incomingLocationAt(d.range);
                 let list = result.get(location.uri);
                 if (!list) {
                     list = [];
@@ -220,7 +217,7 @@ export class NotebookConverter implements Disposable {
 
     public toOutgoingPosition(cell: TextDocument, position: Position): Position {
         const wrapper = this.getTextDocumentWrapper(cell);
-        return wrapper ? wrapper.positionAt(new Location(cell.uri, position)) : position;
+        return wrapper ? wrapper.outgoingPositionAt(new Location(cell.uri, position)) : position;
     }
 
     public toOutgoingPositions(cell: TextDocument, positions: Position[]) {
@@ -231,20 +228,10 @@ export class NotebookConverter implements Disposable {
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-            const range = wrapper.rangeOf(uri);
+            const range = wrapper.outgoingRangeOf(uri);
             return range || cellRange || new Range(new Position(0, 0), new Position(0, 0));
         }
         return cellRange || new Range(new Position(0, 0), new Position(0, 0));
-    }
-
-    public toOutgoingOffset(cell: TextDocument, offset: number): number {
-        const wrapper = this.getTextDocumentWrapper(cell);
-        if (wrapper) {
-            const position = cell.positionAt(offset);
-            const overallPosition = wrapper.positionAt(new Location(cell.uri, position));
-            return wrapper.offsetAt(overallPosition);
-        }
-        return offset;
     }
 
     public toOutgoingContext(cell: TextDocument, context: CodeActionContext): CodeActionContext {
@@ -306,7 +293,7 @@ export class NotebookConverter implements Disposable {
         }
         const result: DocumentHighlight[] = [];
         for (let h of highlight) {
-            const loc = wrapper.locationAt(h.range);
+            const loc = wrapper.incomingLocationAt(h.range);
             if (loc.uri.toString() === cell.uri.toString()) {
                 result.push({ ...h, range: loc.range });
             }
@@ -435,7 +422,7 @@ export class NotebookConverter implements Disposable {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const wrapper = this.getWrapperFromOutgoingUri(uri);
         if (wrapper) {
-            return wrapper.cellOffsetAt(offset);
+            return wrapper.incomingOffsetAt(uri, offset);
         }
         return offset;
     }
@@ -445,7 +432,7 @@ export class NotebookConverter implements Disposable {
         let result: Uri | undefined;
         if (wrapper) {
             if (range) {
-                const location = wrapper.locationAt(range);
+                const location = wrapper.incomingLocationAt(range);
                 result = location.uri;
             } else {
                 result = wrapper.notebookUri;
@@ -628,7 +615,7 @@ export class NotebookConverter implements Disposable {
             // First line offset is the wrong number. It is from the beginning of the concat doc and not the
             // cell.
             if (wrapper && tokens.data.length > 0) {
-                const startOfCell = wrapper.positionAt(new Location(cellUri, new Position(0, 0)));
+                const startOfCell = wrapper.outgoingPositionAt(new Location(cellUri, new Position(0, 0)));
 
                 // Note to self: If tokenization stops working, might be pylance's fault. It does handle
                 // range requests but was returning stuff outside the range.
@@ -839,8 +826,8 @@ export class NotebookConverter implements Disposable {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
-            const startLoc = wrapper.locationAt(range.start);
-            const endLoc = wrapper.locationAt(range.end);
+            const startLoc = wrapper.incomingLocationAt(range.start);
+            const endLoc = wrapper.incomingLocationAt(range.end);
             return {
                 uri: startLoc.uri,
                 range: new Range(startLoc.range.start, endLoc.range.end)
@@ -878,16 +865,5 @@ export class NotebookConverter implements Disposable {
             this.activeWrappers.set(key, result);
         }
         return result;
-    }
-
-    private filterMagics(wrapper: NotebookWrapper, value: Diagnostic): boolean {
-        // Get the code at the range
-        const text = wrapper.getText(value.range);
-
-        // Only skip diagnostics on the front of the line (spacing?)
-        if (text && value.range.start.character == 0 && (text.startsWith('%') || text.startsWith('!'))) {
-            return false;
-        }
-        return true;
     }
 }
