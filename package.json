@@ -19,6 +19,7 @@
     "author": "Visual Studio Code Team",
     "license": "MIT",
     "dependencies": {
+        "fast-diff": "^1.2.0",
         "sha.js": "^2.4.11",
         "vscode-languageclient": "7.0.0"
     },
