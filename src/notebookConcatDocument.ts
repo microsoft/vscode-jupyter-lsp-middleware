@@ -117,9 +117,6 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                     endOffset
                 )}`;
 
-                // Convert start offset to concat offset to give the diff a chance to find the start position
-                const possibleStartDiff = this.mapRealToConcatOffset(startOffset);
-
                 // Create new spans from the edited text
                 const newSpans = this.createSpans(
                     oldSpans[0].uri,
@@ -130,19 +127,38 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 const newText = newSpans.map((s) => s.text).join('');
 
                 // Diff the two pieces of text
-                const diff = fastDiff(oldText, newText, {});
+                const diff = fastDiff(oldText, newText);
 
-                // Concat start offset is the length of the first item if an equal (or zero if no equal)
-                const concatStartOffset =
-                    oldSpans[0].startOffset + (diff[0][0] == FASTDIFF_EQUAL ? diff[0][1].length : 0);
+                // Compare the new spans with the old spans to see where things start to diff
+                const oldStartOffset = this.mapRealToConcatOffset(startOffset);
+                const oldEndOffset = this.mapRealToConcatOffset(endOffset);
+                let changeStartOffset = oldStartOffset;
+                let changeEndOffset = oldEndOffset;
+                for (let n = 0, o = 0; n < newSpans.length && o < oldSpans.length; ) {
+                    // Get both spans
+                    const oldSpan = oldSpans[o];
+                    const newSpan = newSpans[n];
 
-                // Concat end offset is the same as start unless second item is a delete
-                const concatEndOffset =
-                    diff[1][0] == FASTDIFF_DELETE ? diff[1][1].length + concatStartOffset : concatStartOffset;
+                    // Compare them to see what moved around
+                    if (newSpan.inRealCell != oldSpan.inRealCell && oldSpan.text !== newSpan.text) {
+                        // An injected cell may be before our new code
+                        changeStartOffset = Math.min(changeStartOffset, oldSpan.startOffset);
+
+                        // An injected cell may be after our new code
+                        changeEndOffset = Math.max(changeEndOffset, oldSpan.endOffset);
+
+                        // Move up for anybody not real
+                        n += newSpan.inRealCell ? 0 : 1;
+                        o += newSpan.inRealCell ? 0 : 1;
+                    } else {
+                        o++;
+                        n++;
+                    }
+                }
 
                 // Use those concat offsets to compute line and numbers
-                const fromPosition = this.concatPositionOf(concatStartOffset);
-                const toPosition = this.concatPositionOf(concatEndOffset);
+                const fromPosition = this.concatPositionOf(changeStartOffset);
+                const toPosition = this.concatPositionOf(changeEndOffset);
 
                 // New text should be the first add if there is one
                 const diffText = diff.find((d) => d[0] == FASTDIFF_INSERT)?.[1] || '';
