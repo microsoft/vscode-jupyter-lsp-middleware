@@ -234,6 +234,16 @@ export class NotebookConverter implements Disposable {
         return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
 
+    public toRealRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
+        const wrapper = this.getTextDocumentWrapper(cell);
+        if (wrapper) {
+            const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+            const range = wrapper.realRangeOf(uri);
+            return range || cellRange || new Range(new Position(0, 0), new Position(0, 0));
+        }
+        return cellRange || new Range(new Position(0, 0), new Position(0, 0));
+    }
+
     public toConcatContext(cell: TextDocument, context: CodeActionContext): CodeActionContext {
         return {
             ...context,

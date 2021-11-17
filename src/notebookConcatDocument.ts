@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
 import * as shajs from 'sha.js';
-import * as fastDiff from 'fast-diff';
+import * as fastMyersDiff from 'fast-myers-diff';
 import {
     findLastIndex,
     InteractiveInputScheme,
@@ -38,7 +38,7 @@ type NotebookSpan = {
 
 const TypeIgnoreAddition = ' # type: ignore';
 
-const TypeIgnoreTransforms = [{ regex: /(^\s*%.*)/g }, { regex: /(^\s*!.*)/g }, { regex: /(^\s*await\s+.*)/g }];
+const TypeIgnoreTransforms = [{ regex: /(^\s*%.*)/ }, { regex: /(^\s*!.*)/ }, { regex: /(^\s*await\s+.*)/ }];
 
 const NotebookConcatPrefix = '_NotebookConcat_';
 
@@ -96,88 +96,75 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const index = this._spans.findIndex((c) => c.uri.toString() === e.textDocument.uri);
         if (index >= 0) {
             e.edits.forEach((edit) => {
-                // Get all the real spans for this cell (after each edit as they'll change)
-                const oldSpans = this._spans.filter((s) => s.uri.toString() === e.textDocument.uri);
-                const oldText = oldSpans.map((s) => s.text).join('');
+                try {
+                    // Get old text for diffing
+                    const oldSpans = this._spans.filter((s) => s.uri.toString() === e.textDocument.uri);
+                    const oldText = oldSpans.map((s) => s.text).join('');
 
-                // Apply the edit to the real spans
-                const realText = this.getRealText(oldSpans[0].uri);
-                const realCellLines = this._realLines.filter((r) => r.cellUri.toString() === e.textDocument.uri);
-                const firstLineOffset = realCellLines[0].offset;
-                const startOffset =
-                    realCellLines[edit.range.start.line].offset + edit.range.start.character - firstLineOffset;
-                const endOffset =
-                    realCellLines[edit.range.end.line].offset + edit.range.end.character - firstLineOffset;
-                const editedText = `${realText.slice(0, startOffset)}${edit.newText.replace(/\r/g, '')}${realText.slice(
-                    endOffset
-                )}`;
+                    // Apply the edit to the real spans
+                    const realText = this.getRealText(oldSpans[0].uri);
+                    const realCellLines = this._realLines.filter((r) => r.cellUri.toString() === e.textDocument.uri);
+                    const firstLineOffset = realCellLines[0].offset;
+                    const startOffset =
+                        realCellLines[edit.range.start.line].offset + edit.range.start.character - firstLineOffset;
+                    const endOffset =
+                        realCellLines[edit.range.end.line].offset + edit.range.end.character - firstLineOffset;
+                    const editedText = `${realText.slice(0, startOffset)}${edit.newText.replace(
+                        /\r/g,
+                        ''
+                    )}${realText.slice(endOffset)}`;
 
-                // Create new spans from the edited text
-                const newSpans = this.createSpans(
-                    oldSpans[0].uri,
-                    editedText,
-                    oldSpans[0].startOffset,
-                    oldSpans[0].realOffset
-                );
-                const newText = newSpans.map((s) => s.text).join('');
+                    // Create new spans from the edited text
+                    const newSpans = this.createSpans(
+                        oldSpans[0].uri,
+                        editedText,
+                        oldSpans[0].startOffset,
+                        oldSpans[0].realOffset
+                    );
+                    const newText = newSpans.map((s) => s.text).join('');
 
-                // Diff the two pieces of text
-                const diff = fastDiff(oldText, newText);
+                    // Diff the two pieces of text
+                    const diff = [...fastMyersDiff.diff(oldText, newText)];
 
-                // Compare the new spans with the old spans to see where things start to diff
-                const oldStartOffset = this.mapRealToConcatOffset(startOffset + firstLineOffset);
-                const oldEndOffset = this.mapRealToConcatOffset(endOffset + firstLineOffset);
-                let changeStartOffset = oldStartOffset;
-                let changeEndOffset = oldEndOffset;
-                for (let n = 0, o = 0; n < newSpans.length && o < oldSpans.length; ) {
-                    // Get both spans
-                    const oldSpan = oldSpans[o];
-                    const newSpan = newSpans[n];
+                    // Diff should have an array of numbers. These are
+                    // offsets in the old text translating to offsets in the new text
+                    if (diff.length > 0) {
+                        const oldTextStart = diff[0][0];
+                        const oldTextEnd = diff[diff.length - 1][1];
+                        const newTextStart = diff[0][2];
+                        const newTextEnd = diff[diff.length - 1][3];
 
-                    // Compare them to see what moved around
-                    if (newSpan.inRealCell != oldSpan.inRealCell && oldSpan.text !== newSpan.text) {
-                        // An injected cell may be before our new code
-                        changeStartOffset = Math.min(changeStartOffset, oldSpan.startOffset);
+                        // New text is from the new text changes
+                        const text = newText.substring(newTextStart, newTextEnd);
 
-                        // An injected cell may be after our new code
-                        changeEndOffset = Math.max(changeEndOffset, oldSpan.endOffset);
+                        // Compute positions in old text based on change locations
+                        const fromPosition = this.concatPositionOf(oldSpans[0].startOffset + oldTextStart);
+                        const toPosition = this.concatPositionOf(oldSpans[0].startOffset + oldTextEnd);
 
-                        // Move up for anybody not real
-                        n += newSpan.inRealCell ? 0 : 1;
-                        o += newSpan.inRealCell ? 0 : 1;
-                    } else {
-                        o++;
-                        n++;
+                        changes.push({
+                            text,
+                            range: this.createSerializableRange(fromPosition, toPosition)
+                        });
                     }
+
+                    // Finally update our spans for this cell.
+                    const concatDiffLength =
+                        newSpans[newSpans.length - 1].endOffset - oldSpans[oldSpans.length - 1].endOffset;
+                    const realDiffLength =
+                        newSpans[newSpans.length - 1].realEndOffset - oldSpans[oldSpans.length - 1].realEndOffset;
+                    this._spans.splice(index, oldSpans.length, ...newSpans);
+                    for (let i = index + newSpans.length; i < this._spans.length; i++) {
+                        this._spans[i].startOffset += concatDiffLength;
+                        this._spans[i].endOffset += concatDiffLength;
+                        this._spans[i].realOffset += realDiffLength;
+                        this._spans[i].realEndOffset += realDiffLength;
+                    }
+
+                    // Recreate our lines
+                    this.computeLines();
+                } catch (e) {
+                    console.log(`Concat document failure : ${e}`);
                 }
-
-                // Use those concat offsets to compute line and numbers
-                const fromPosition = this.concatPositionOf(changeStartOffset);
-                const toPosition = this.concatPositionOf(changeEndOffset);
-
-                // New text should be the first add if there is one
-                const diffText = diff.find((d) => d[0] == fastDiff.INSERT)?.[1] || '';
-
-                changes.push({
-                    text: diffText,
-                    range: this.createSerializableRange(fromPosition, toPosition)
-                });
-
-                // Finally update our spans for this cell.
-                const concatDiffLength =
-                    newSpans[newSpans.length - 1].endOffset - oldSpans[oldSpans.length - 1].endOffset;
-                const realDiffLength =
-                    newSpans[newSpans.length - 1].realEndOffset - oldSpans[oldSpans.length - 1].realEndOffset;
-                this._spans.splice(index, oldSpans.length, ...newSpans);
-                for (let i = index + newSpans.length; i < this._spans.length; i++) {
-                    this._spans[i].startOffset += concatDiffLength;
-                    this._spans[i].endOffset += concatDiffLength;
-                    this._spans[i].realOffset += realDiffLength;
-                    this._spans[i].realEndOffset += realDiffLength;
-                }
-
-                // Recreate our lines
-                this.computeLines();
             });
             return this.toDidChangeTextDocumentParams(changes);
         }
@@ -311,14 +298,16 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             const from = new vscode.Position(0, 0);
             const to = this._lines.length > 0 ? this._lines[this._lines.length - 1].rangeIncludingLineBreak.end : from;
             const oldLength = this.getEndOffset();
-            const oldContents = this.getContents();
+            const oldRealContents = this.getRealText();
             const normalizedCellText = e.cells.map((c) => c.textDocument.text.replace(/\r/g, ''));
-            const newContents = `${normalizedCellText.join('\n')}\n`;
-            if (newContents != oldContents) {
+            const newRealContents = `${normalizedCellText.join('\n')}\n`;
+            if (newRealContents != oldRealContents) {
                 this._version++;
                 this._closed = false;
                 this._spans = [];
                 this._lines = [];
+                this._realLines = [];
+                this._concatUri = undefined;
 
                 // Just act like we opened all cells again
                 e.cells.forEach((c) => {
@@ -418,6 +407,20 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const cellLines = this._lines.filter((l) => l.cellUri.toString() === cellUri.toString());
         const firstLine = cellLines[0];
         const lastLine = cellLines[cellLines.length - 1];
+        if (firstLine && lastLine) {
+            return new vscode.Range(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
+        }
+        return new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
+    }
+    public realRangeOf(cellUri: vscode.Uri) {
+        // Get all the real spans
+        const realSpans = this._spans.filter((s) => s.uri.toString() == cellUri.toString() && s.inRealCell);
+        const startOffset = realSpans[0].startOffset | 0;
+        const endOffset = realSpans.length > 0 ? realSpans[realSpans.length - 1].endOffset : startOffset;
+
+        // Find the matching concat lines
+        const firstLine = this._lines.find((l) => startOffset >= l.offset && startOffset < l.endOffset);
+        const lastLine = this._lines.find((l) => endOffset >= l.offset && endOffset < l.endOffset);
         if (firstLine && lastLine) {
             return new vscode.Range(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
         }
@@ -567,8 +570,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     }
 
     private concatPositionOf(offset: number): vscode.Position {
-        // Find line that has this offset (including the end offset)
-        const line = this._lines.find((l) => offset >= l.offset && offset <= l.endOffset);
+        // Find line that has this offset
+        const line = this._lines.find((l) => offset >= l.offset && offset < l.endOffset);
         return line ? new vscode.Position(line.lineNumber, offset - line.offset) : new vscode.Position(0, 0);
     }
 
@@ -631,6 +634,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         // Go through each line, gathering up spans
         const lines = splitLines(text);
         const spans: NotebookSpan[] = [];
+        let startRealOffset = realOffset;
         let textOffset = 0;
         lines.forEach((l) => {
             if (TypeIgnoreTransforms.find((transform) => transform.regex.test(l))) {
@@ -638,7 +642,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 spans.push(
                     this.createSpan(
                         cellUri,
-                        text.substring(0, textOffset + l.length),
+                        text.substring(0, textOffset + l.length), // Dont include \n in first span
                         text.substring(0, textOffset + l.length),
                         offset,
                         realOffset
@@ -656,21 +660,25 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 // Update offset using last span (length of type ignore)
                 offset = spans[spans.length - 1].endOffset;
 
-                // Real offset doesn't move because Type ignore span is
-                // not in the real code
-
-                // Then add the \n after the line (it's in the real code)
-                spans.push(this.createSpan(cellUri, '\n', '\n', offset, realOffset));
-                offset += 1;
-                realOffset += 1;
+                // Just move the text offset so the \n will end up on the
+                // next span
                 textOffset += 1;
+            } else {
+                // Move up another line
+                textOffset += l.length + 1;
             }
         });
 
-        // Add final span if any text leftover
-        if (textOffset < text.length) {
+        // See if anymore real text left
+        if (realOffset - startRealOffset < text.length) {
             spans.push(
-                this.createSpan(cellUri, text.substring(textOffset), text.substring(textOffset), offset, realOffset)
+                this.createSpan(
+                    cellUri,
+                    text.substring(realOffset - startRealOffset),
+                    text.substring(realOffset - startRealOffset),
+                    offset,
+                    realOffset
+                )
             );
         }
 

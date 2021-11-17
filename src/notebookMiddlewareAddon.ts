@@ -784,7 +784,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newDoc = this.converter.toConcatDocument(document);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
-            const newRange = this.converter.toConcatRange(document.uri, undefined);
+            const newRange = this.converter.toRealRange(document.uri, undefined);
 
             const params: SemanticTokensRangeParams = {
                 textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),

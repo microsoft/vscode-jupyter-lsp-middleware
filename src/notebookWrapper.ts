@@ -100,6 +100,9 @@ export class NotebookWrapper implements vscode.Disposable {
     public concatRangeOf(cellUri: vscode.Uri) {
         return this.concatDocument.concatRangeOf(cellUri);
     }
+    public realRangeOf(cellUri: vscode.Uri) {
+        return this.concatDocument.realRangeOf(cellUri);
+    }
     public notebookOffsetAt(cellUri: vscode.Uri, offset: number) {
         return this.concatDocument.notebookOffsetAt(cellUri, offset);
     }
