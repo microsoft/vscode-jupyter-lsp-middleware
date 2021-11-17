@@ -36,16 +36,11 @@ type NotebookSpan = {
     realText: string;
 };
 
-const TypeIgnoreAddition = ' # type: ignore\n';
+const TypeIgnoreAddition = ' # type: ignore';
 
 const TypeIgnoreTransforms = [{ regex: /(^\s*%.*)/g }, { regex: /(^\s*!.*)/g }, { regex: /(^\s*await\s+.*)/g }];
 
 const NotebookConcatPrefix = '_NotebookConcat_';
-
-// Extract constants. Either webpack isn't picking them up right or they're not authored correctly
-const FASTDIFF_EQUAL = fastDiff.EQUAL;
-const FASTDIFF_DELETE = fastDiff.DELETE;
-const FASTDIFF_INSERT = fastDiff.INSERT;
 
 export class NotebookConcatDocument implements vscode.TextDocument, vscode.Disposable {
     public get uri(): vscode.Uri {
@@ -130,8 +125,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 const diff = fastDiff(oldText, newText);
 
                 // Compare the new spans with the old spans to see where things start to diff
-                const oldStartOffset = this.mapRealToConcatOffset(startOffset);
-                const oldEndOffset = this.mapRealToConcatOffset(endOffset);
+                const oldStartOffset = this.mapRealToConcatOffset(startOffset + firstLineOffset);
+                const oldEndOffset = this.mapRealToConcatOffset(endOffset + firstLineOffset);
                 let changeStartOffset = oldStartOffset;
                 let changeEndOffset = oldEndOffset;
                 for (let n = 0, o = 0; n < newSpans.length && o < oldSpans.length; ) {
@@ -161,7 +156,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 const toPosition = this.concatPositionOf(changeEndOffset);
 
                 // New text should be the first add if there is one
-                const diffText = diff.find((d) => d[0] == FASTDIFF_INSERT)?.[1] || '';
+                const diffText = diff.find((d) => d[0] == fastDiff.INSERT)?.[1] || '';
 
                 changes.push({
                     text: diffText,
@@ -644,16 +639,16 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                     this.createSpan(
                         cellUri,
                         text.substring(0, textOffset + l.length),
-                        text.substring(0, textOffset + l.length + 1),
+                        text.substring(0, textOffset + l.length),
                         offset,
                         realOffset
                     )
                 );
 
-                // Offset moves by the line length (and line length + 1 for real)
+                // Offset moves by the line length
                 offset += l.length;
-                realOffset += l.length + 1;
-                textOffset += l.length + 1;
+                realOffset += l.length;
+                textOffset += l.length;
 
                 // Then push after that a TypeIgnoreSpan
                 spans.push(this.createTypeIgnoreSpan(cellUri, offset, realOffset));
@@ -663,6 +658,12 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
                 // Real offset doesn't move because Type ignore span is
                 // not in the real code
+
+                // Then add the \n after the line (it's in the real code)
+                spans.push(this.createSpan(cellUri, '\n', '\n', offset, realOffset));
+                offset += 1;
+                realOffset += 1;
+                textOffset += 1;
             }
         });
 
