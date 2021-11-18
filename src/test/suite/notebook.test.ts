@@ -197,7 +197,10 @@ suite('Notebook tests', function () {
         // Cell 2 should not
         cell2 = window.activeNotebookEditor?.document.cellAt(1)!;
         diagnostics = languages.getDiagnostics(cell2.document.uri);
-        assert.isEmpty(diagnostics, 'No diagnostics should be found in the second cell');
+        assert.isEmpty(
+            diagnostics,
+            `No diagnostics should be found in the second cell: ${JSON.stringify(diagnostics)}`
+        );
 
         // Move cell back down, should have same results.
         await focusCell(cell1);
