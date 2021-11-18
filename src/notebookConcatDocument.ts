@@ -139,13 +139,17 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                         const text = newText.substring(newTextStart, newTextEnd);
 
                         // Compute positions in old text based on change locations
-                        const fromPosition = this.concatPositionOf(oldSpans[0].startOffset + oldTextStart);
-                        const toPosition = this.concatPositionOf(oldSpans[0].startOffset + oldTextEnd);
+                        const fromPosition = this.getEditPosition(
+                            oldSpans[0].uri,
+                            oldSpans[0].startOffset + oldTextStart
+                        );
+                        const toPosition = this.getEditPosition(oldSpans[0].uri, oldSpans[0].startOffset + oldTextEnd);
 
                         changes.push({
                             text,
-                            range: this.createSerializableRange(fromPosition, toPosition)
-                        });
+                            range: this.createSerializableRange(fromPosition, toPosition),
+                            rangeLength: oldTextEnd - oldTextStart
+                        } as any);
                     }
 
                     // Finally update our spans for this cell.
@@ -577,10 +581,21 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return concatOffset;
     }
 
-    private concatPositionOf(offset: number): vscode.Position {
-        // Find line that has this offset
-        const line = this._lines.find((l) => offset >= l.offset && offset < l.endOffset);
-        return line ? new vscode.Position(line.lineNumber, offset - line.offset) : new vscode.Position(0, 0);
+    private getEditPosition(cellUri: vscode.Uri, offset: number): vscode.Position {
+        // Get all the lines for this cell
+        const cellLines = this._lines.filter((l) => l.cellUri.toString() == cellUri.toString());
+
+        // Find the line that contains this offset. If not found, use the last line in the cell
+        const line = cellLines.find((l) => offset >= l.offset && offset < l.endOffset);
+        if (line) {
+            return new vscode.Position(line.lineNumber, offset - line.offset);
+        } else {
+            // Otherwise we're off the end of the cell
+            return new vscode.Position(
+                cellLines[cellLines.length - 1].lineNumber,
+                cellLines[cellLines.length - 1].text.length
+            );
+        }
     }
 
     private createSpan(
