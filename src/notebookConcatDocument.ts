@@ -125,6 +125,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                     const newText = newSpans.map((s) => s.text).join('');
 
                     // Diff the two pieces of text
+                    // see docs here on what it returns: https://github.com/gliese1337/fast-myers-diff
+                    // Essentially it's an array of indices, one item in the array per change detected
+                    // indices are start/end offsets for each piece of text where the change occurred
                     const diff = [...fastMyersDiff.diff(oldText, newText)];
 
                     // Diff should have an array of numbers. These are
