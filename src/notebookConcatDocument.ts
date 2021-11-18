@@ -37,6 +37,7 @@ type NotebookSpan = {
 };
 
 const TypeIgnoreAddition = ' # type: ignore';
+const HeaderAddition = 'import IPython\nIPython.get_ipython()\n'; // Eliminate warning about not using
 
 const TypeIgnoreTransforms = [{ regex: /(^\s*%.*)/ }, { regex: /(^\s*!.*)/ }, { regex: /(^\s*await\s+.*)/ }];
 
@@ -202,11 +203,11 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const fromOffset =
             insertIndex < this._spans.length && insertIndex >= 0
                 ? this._spans[insertIndex].startOffset
-                : this._spans[this._spans.length - 1].endOffset;
+                : this.getEndOffset();
         const fromRealOffset =
             insertIndex < this._spans.length && insertIndex >= 0
                 ? this._spans[insertIndex].realOffset
-                : this._spans[this._spans.length - 1].realEndOffset;
+                : this.getRealEndOffset();
         const fromPosition =
             insertIndex < this._spans.length && insertIndex >= 0
                 ? this._lines.find((l) => l.offset == fromOffset)!.range.start
@@ -575,21 +576,6 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return line ? new vscode.Position(line.lineNumber, offset - line.offset) : new vscode.Position(0, 0);
     }
 
-    private createIPythonSpan(cellUri: vscode.Uri, offset: number, realOffset: number): NotebookSpan {
-        const text = 'import IPython\n';
-        return {
-            fragment: -1,
-            uri: cellUri,
-            inRealCell: false,
-            startOffset: offset,
-            endOffset: offset + text.length,
-            realOffset,
-            realEndOffset: realOffset,
-            text,
-            realText: ''
-        };
-    }
-
     private createSpan(
         cellUri: vscode.Uri,
         text: string,
@@ -630,10 +616,36 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         };
     }
 
+    private createHeaderSpans(cellUri: vscode.Uri): NotebookSpan[] {
+        return [
+            {
+                fragment: -1,
+                uri: cellUri,
+                inRealCell: false,
+                startOffset: 0,
+                endOffset: HeaderAddition.length,
+                realOffset: 0,
+                realEndOffset: 0,
+                text: HeaderAddition,
+                realText: ''
+            }
+        ];
+    }
+
     private createSpans(cellUri: vscode.Uri, text: string, offset: number, realOffset: number): NotebookSpan[] {
         // Go through each line, gathering up spans
         const lines = splitLines(text);
-        const spans: NotebookSpan[] = [];
+        let spans: NotebookSpan[] = [];
+
+        // If this the absolute first cell, add the header spans in
+        if (offset == 0) {
+            spans = this.createHeaderSpans(cellUri);
+            offset = spans[spans.length - 1].endOffset;
+
+            // Real offset doesn't update because header spans aren't part of
+            // the real cells
+        }
+
         let startRealOffset = realOffset;
         let textOffset = 0;
         lines.forEach((l) => {
@@ -745,6 +757,10 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return this._spans.length > 0 ? this._spans[this._spans.length - 1].endOffset : 0;
     }
 
+    private getRealEndOffset(): number {
+        return this._spans.length > 0 ? this._spans[this._spans.length - 1].realEndOffset : 0;
+    }
+
     private createSerializableRange(start: vscode.Position, end: vscode.Position): vscode.Range {
         // This funciton is necessary so that the Range can be passed back
         // over a remote connection without including all of the extra fields that
@@ -786,10 +802,6 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             this._notebookUri = this._interactiveWindow
                 ? cellUri.with({ scheme: InteractiveScheme, path: cellUri.fsPath, fragment: undefined })
                 : vscode.Uri.file(cellUri.fsPath);
-
-            // Inject an import for IPython as every notebook has this implicitly
-            this._spans.splice(0, 0, this.createIPythonSpan(cellUri, 0, 0));
-            this.computeLines();
         }
     }
 }

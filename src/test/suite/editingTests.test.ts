@@ -21,7 +21,10 @@ suite('Editing Tests', () => {
                 const concat = generateWrapper(notebookDocument);
                 assert.strictEqual(concat.getConcatDocument().lineCount, 5);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
-                assert.strictEqual(concat.getText(), ['print(1)', 'print(2)', 'foo = 2', 'print(foo)', ''].join('\n'));
+                assert.strictEqual(
+                    concat.getText(),
+                    ['import IPython', 'print(1)', 'print(2)', 'foo = 2', 'print(foo)', ''].join('\n')
+                );
 
                 // Verify if we delete markdown, we still have same count
                 const markdown = notebookDocument.getCells()[2];
