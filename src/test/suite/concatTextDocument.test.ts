@@ -9,6 +9,8 @@ import { generateWrapper, InteractiveScheme, mockTextDocument, withTestNotebook 
 import { Location, NotebookCellKind, NotebookDocument, Position, Uri, Range, DocumentFilter } from 'vscode';
 import { InteractiveInputScheme, score } from '../../common/utils';
 
+const HeaderText = 'import IPython\nIPython.get_ipython()';
+
 suite('concatTextDocument', () => {
     test('score', () => {
         assert.strictEqual(score(mockTextDocument(Uri.file('test.ipynb'), 'python', []), '*'), 5);
@@ -52,7 +54,7 @@ suite('concatTextDocument', () => {
 
                 assert.strictEqual(
                     concat.getText(),
-                    ['import IPython', 'print(1)', 'barfoo = 2', 'print(foo)', ''].join('\n')
+                    [HeaderText, 'print(1)', 'barfoo = 2', 'print(foo)', ''].join('\n')
                 );
                 // Then deletion
                 concat.handleChange({
@@ -68,10 +70,7 @@ suite('concatTextDocument', () => {
                     reason: undefined
                 });
 
-                assert.strictEqual(
-                    concat.getText(),
-                    ['import IPython', 'print(1)', 'bar = 2', 'print(foo)', ''].join('\n')
-                );
+                assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'bar = 2', 'print(foo)', ''].join('\n'));
 
                 // Then replace
                 concat.handleChange({
@@ -87,10 +86,7 @@ suite('concatTextDocument', () => {
                     reason: undefined
                 });
 
-                assert.strictEqual(
-                    concat.getText(),
-                    ['import IPython', 'print(1)', 'bar = 2', 'print(bar)', ''].join('\n')
-                );
+                assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'bar = 2', 'print(bar)', ''].join('\n'));
             }
         );
     });
@@ -105,12 +101,9 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
-                assert.strictEqual(
-                    concat.getText(),
-                    ['import IPython', 'print(1)', 'foo = 2', 'print(foo)', ''].join('\n')
-                );
+                assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', ''].join('\n'));
             }
         );
     });
@@ -125,19 +118,13 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(
-                    concat.getText(),
-                    ['import IPython', 'print(1)', 'foo = 2', 'print(foo)', ''].join('\n')
-                );
+                assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', ''].join('\n'));
                 const firstCell = notebookDocument.getCells()[0];
                 const lastCell = notebookDocument.getCells()[2];
                 notebookDocument.getCells().splice(0, 1, lastCell);
                 notebookDocument.getCells().splice(2, 1, firstCell);
                 concat.handleRefresh(notebookDocument);
-                assert.strictEqual(
-                    concat.getText(),
-                    ['import IPython', 'foo = 2', 'print(foo)', 'print(1)', ''].join('\n')
-                );
+                assert.strictEqual(concat.getText(), [HeaderText, 'foo = 2', 'print(foo)', 'print(1)', ''].join('\n'));
             }
         );
     });
@@ -157,24 +144,20 @@ suite('concatTextDocument', () => {
                     ['print("bar")']
                 );
                 const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
-                    ['import IPython', 'print(1)', 'foo = 2', 'print(foo)', 'print("bar")', ''].join('\n')
+                    [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', 'print("bar")', ''].join('\n')
                 );
-                assert.strictEqual(concat.getConcatDocument().lineAt(1).text, 'print(1)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'foo = 2');
-                assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'print(foo)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'print("bar")');
+                assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'print(1)');
+                assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'foo = 2');
+                assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'print(foo)');
+                assert.strictEqual(concat.getConcatDocument().lineAt(5).text, 'print("bar")');
 
                 assert.strictEqual(
-                    concat.notebookLocationAt(new Position(1, 0)).uri.toString(),
-                    notebookDocument.getCells()[0].document.uri.toString()
-                );
-                assert.strictEqual(
                     concat.notebookLocationAt(new Position(2, 0)).uri.toString(),
-                    notebookDocument.getCells()[2].document.uri.toString()
+                    notebookDocument.getCells()[0].document.uri.toString()
                 );
                 assert.strictEqual(
                     concat.notebookLocationAt(new Position(3, 0)).uri.toString(),
@@ -182,6 +165,10 @@ suite('concatTextDocument', () => {
                 );
                 assert.strictEqual(
                     concat.notebookLocationAt(new Position(4, 0)).uri.toString(),
+                    notebookDocument.getCells()[2].document.uri.toString()
+                );
+                assert.strictEqual(
+                    concat.notebookLocationAt(new Position(5, 0)).uri.toString(),
                     inputDocument.uri.toString()
                 );
 
@@ -189,45 +176,45 @@ suite('concatTextDocument', () => {
                     concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 0))
                     ),
-                    new Position(1, 0)
+                    new Position(2, 0)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 3))
                     ),
-                    new Position(1, 3)
+                    new Position(2, 3)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(0, 0))
                     ),
-                    new Position(2, 0)
+                    new Position(3, 0)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(0, 3))
                     ),
-                    new Position(2, 3)
+                    new Position(3, 3)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(1, 0))
                     ),
-                    new Position(3, 0)
+                    new Position(4, 0)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(
                         new Location(notebookDocument.getCells()[2].document.uri, new Position(1, 3))
                     ),
-                    new Position(3, 3)
+                    new Position(4, 3)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(new Location(inputDocument.uri, new Position(0, 0))),
-                    new Position(4, 0)
+                    new Position(5, 0)
                 );
                 assert.deepStrictEqual(
                     concat.concatPositionAt(new Location(inputDocument.uri, new Position(0, 3))),
-                    new Position(4, 3)
+                    new Position(5, 3)
                 );
             }
         );
@@ -248,20 +235,20 @@ suite('concatTextDocument', () => {
                     ['print("bar")', 'p.']
                 );
                 const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 7);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
-                    ['import IPython', 'print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.', ''].join('\n')
+                    [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.', ''].join('\n')
                 );
                 assert.strictEqual(concat.getConcatDocument().lineAt(0).text, 'import IPython');
-                assert.strictEqual(concat.getConcatDocument().lineAt(1).text, 'print(1)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'foo = 2');
-                assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'print(foo)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'print("bar")');
-                assert.strictEqual(concat.getConcatDocument().lineAt(5).text, 'p.');
+                assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'print(1)');
+                assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'foo = 2');
+                assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'print(foo)');
+                assert.strictEqual(concat.getConcatDocument().lineAt(5).text, 'print("bar")');
+                assert.strictEqual(concat.getConcatDocument().lineAt(6).text, 'p.');
 
-                assert.deepStrictEqual(concat.notebookLocationAt(new Position(5, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(concat.notebookLocationAt(new Position(6, 2)).range, new Range(1, 2, 1, 2));
             }
         );
     });
@@ -277,7 +264,7 @@ suite('concatTextDocument', () => {
                     ['print("bar")', 'p.']
                 );
                 const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 3);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
                 // assert.strictEqual(concat.languageId, 'python');
                 // assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.'].join('\n'));
                 // assert.strictEqual(concat.lineAt(0).text, 'print(1)');
@@ -286,7 +273,7 @@ suite('concatTextDocument', () => {
                 // assert.strictEqual(concat.lineAt(3).text, 'print("bar")');
                 // assert.strictEqual(concat.lineAt(4).text, 'p.');
 
-                assert.deepStrictEqual(concat.notebookLocationAt(new Position(2, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(concat.notebookLocationAt(new Position(3, 2)).range, new Range(1, 2, 1, 2));
             }
         );
     });
@@ -303,12 +290,12 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 8);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 9);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
                     [
-                        'import IPython',
+                        HeaderText,
                         'await print(1) # type: ignore',
                         '%foo = 2 # type: ignore',
                         'print(foo)',
@@ -335,7 +322,7 @@ suite('concatTextDocument', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 8);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 9);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
 
                 // Try insertion
@@ -355,7 +342,7 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(
                     concat.getText(),
                     [
-                        'import IPython',
+                        HeaderText,
                         'await print(1) # type: ignore',
                         'bar%foo = 2',
                         'print(foo)',
@@ -384,7 +371,7 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(
                     concat.getText(),
                     [
-                        'import IPython',
+                        HeaderText,
                         'wait print(1)',
                         'bar%foo = 2',
                         'print(foo)',
@@ -412,7 +399,7 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(
                     concat.getText(),
                     [
-                        'import IPython',
+                        HeaderText,
                         'await print(1) # type: ignore',
                         'bar%foo = 2',
                         'print(foo)',
@@ -440,7 +427,7 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(
                     concat.getText(),
                     [
-                        'import IPython',
+                        HeaderText,
                         'await print(1) # type: ignore',
                         '',
                         'bar%foo = 2',
@@ -469,7 +456,7 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(
                     concat.getText(),
                     [
-                        'import IPython',
+                        HeaderText,
                         'dude',
                         '',
                         'bar%foo = 2',

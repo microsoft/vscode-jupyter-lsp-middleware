@@ -439,12 +439,19 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
         // Concat range is easy, it's the actual line numbers.
         const startLine = this._lines[positionOrRange.start.line];
+        if (startLine) {
+            return {
+                uri: startLine.cellUri,
+                range: new vscode.Range(
+                    this.notebookPositionAt(positionOrRange.start),
+                    this.notebookPositionAt(positionOrRange.end)
+                )
+            };
+        }
+
         return {
-            uri: startLine.cellUri,
-            range: new vscode.Range(
-                this.notebookPositionAt(positionOrRange.start),
-                this.notebookPositionAt(positionOrRange.end)
-            )
+            uri: vscode.Uri.parse(''),
+            range: positionOrRange
         };
     }
 

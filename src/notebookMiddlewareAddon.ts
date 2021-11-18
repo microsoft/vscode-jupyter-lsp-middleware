@@ -585,20 +585,25 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
-        const incomingUri = this.converter.toNotebookUri(uri);
-        if (
-            incomingUri &&
-            incomingUri != uri &&
-            this.shouldProvideIntellisense(incomingUri) &&
-            !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
-        ) {
-            // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-            // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-            // Otherwise old messages for cells that didn't change this time won't go away.
-            const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri, diagnostics);
-            [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
-        } else {
-            // Swallow all other diagnostics
+        try {
+            const incomingUri = this.converter.toNotebookUri(uri);
+            if (
+                incomingUri &&
+                incomingUri != uri &&
+                this.shouldProvideIntellisense(incomingUri) &&
+                !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
+            ) {
+                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+                // Otherwise old messages for cells that didn't change this time won't go away.
+                const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri, diagnostics);
+                [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+            } else {
+                // Swallow all other diagnostics
+                next(uri, []);
+            }
+        } catch (e) {
+            this.traceInfo(`Error during handling diagnostics: ${e}`);
             next(uri, []);
         }
     }
