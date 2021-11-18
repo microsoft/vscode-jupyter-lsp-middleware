@@ -423,7 +423,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     public realRangeOf(cellUri: vscode.Uri) {
         // Get all the real spans
         const realSpans = this._spans.filter((s) => s.uri.toString() == cellUri.toString() && s.inRealCell);
-        const startOffset = realSpans[0].startOffset | 0;
+        const startOffset = realSpans[0].startOffset || 0;
         const endOffset = realSpans.length > 0 ? realSpans[realSpans.length - 1].endOffset : startOffset;
 
         // Find the matching concat lines
@@ -440,18 +440,19 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     public notebookLocationAt(positionOrRange: vscode.Range | vscode.Position): vscode.Location {
         // positionOrRange should be in concat ranges
-        if (positionOrRange instanceof vscode.Position) {
-            positionOrRange = new vscode.Range(positionOrRange, positionOrRange);
-        }
+        const range =
+            positionOrRange instanceof vscode.Position
+                ? new vscode.Range(positionOrRange, positionOrRange)
+                : positionOrRange;
 
         // Get the start and end line
-        let startLine: NotebookConcatLine | undefined = this._lines[positionOrRange.start.line];
-        let endLine = this._lines[positionOrRange.end.line];
+        let startLine: NotebookConcatLine | undefined = this._lines[range.start.line];
+        let endLine = this._lines[range.end.line];
 
         if (startLine && endLine) {
             // Compute offset range of lines
-            let startOffset = startLine.offset + positionOrRange.start.character;
-            let endOffset = endLine.offset + positionOrRange.end.character;
+            let startOffset = startLine.offset + range.start.character;
+            let endOffset = endLine.offset + range.end.character;
 
             // Find the spans that intersect this range that also have real code
             const spans = this._spans.filter(
@@ -473,7 +474,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                         this.notebookPositionAt(
                             new vscode.Position(startLine.lineNumber, startOffset - startLine.offset)
                         ),
-                        this.notebookPositionAt(positionOrRange.end)
+                        this.notebookPositionAt(range.end)
                     )
                 };
             }
@@ -482,7 +483,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         // Not in the real code, return an undefined URI
         return {
             uri: vscode.Uri.parse(''),
-            range: positionOrRange
+            range
         };
     }
 
