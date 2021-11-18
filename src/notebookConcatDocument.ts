@@ -441,25 +441,49 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             positionOrRange = new vscode.Range(positionOrRange, positionOrRange);
         }
 
-        // Concat range is easy, it's the actual line numbers.
-        const startLine = this._lines[positionOrRange.start.line];
-        if (startLine) {
-            return {
-                uri: startLine.cellUri,
-                range: new vscode.Range(
-                    this.notebookPositionAt(positionOrRange.start),
-                    this.notebookPositionAt(positionOrRange.end)
-                )
-            };
+        // Get the start and end line
+        let startLine: NotebookConcatLine | undefined = this._lines[positionOrRange.start.line];
+        let endLine = this._lines[positionOrRange.end.line];
+
+        if (startLine && endLine) {
+            // Compute offset range of lines
+            let startOffset = startLine.offset + positionOrRange.start.character;
+            let endOffset = endLine.offset + positionOrRange.end.character;
+
+            // Find the spans that intersect this range that also have real code
+            const spans = this._spans.filter(
+                (s) =>
+                    s.inRealCell &&
+                    ((startOffset >= s.startOffset && startOffset < s.endOffset) ||
+                        (endOffset >= s.startOffset && endOffset <= s.endOffset))
+            );
+
+            // Remap the start offset if necessary
+            startOffset = spans.length > 0 ? Math.max(startOffset, spans[0].startOffset) : -1;
+
+            // Remap the start line back to the new start offset
+            startLine = this._lines.find((l) => startOffset >= l.offset && startOffset < l.endOffset);
+            if (startLine) {
+                return {
+                    uri: startLine.cellUri,
+                    range: new vscode.Range(
+                        this.notebookPositionAt(
+                            new vscode.Position(startLine.lineNumber, startOffset - startLine.offset)
+                        ),
+                        this.notebookPositionAt(positionOrRange.end)
+                    )
+                };
+            }
         }
 
+        // Not in the real code, return an undefined URI
         return {
             uri: vscode.Uri.parse(''),
             range: positionOrRange
         };
     }
 
-    public notebookPositionAt(outgoingPosition: vscode.Position) {
+    private notebookPositionAt(outgoingPosition: vscode.Position) {
         // Map the concat line to the real line
         const lineOffset = this._lines[outgoingPosition.line].offset;
         const realOffset = this.mapConcatToClosestRealOffset(lineOffset);
@@ -822,7 +846,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             );
             this._concatUri = vscode.Uri.file(concatFilePath);
             this._notebookUri = this._interactiveWindow
-                ? cellUri.with({ scheme: InteractiveScheme, path: cellUri.fsPath, fragment: undefined })
+                ? cellUri.with({ scheme: InteractiveScheme, path: cellUri.fsPath, fragment: '' })
+                : cellUri.fragment.includes('untitled')
+                ? cellUri.with({ scheme: 'untitled', path: cellUri.fsPath, fragment: '', query: '' }) // Special case for untitled files. File path is too long
                 : vscode.Uri.file(cellUri.fsPath);
         }
     }

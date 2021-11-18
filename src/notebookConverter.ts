@@ -147,12 +147,16 @@ export class NotebookConverter implements Disposable {
             // Then for all the new ones, set their values.
             diagnostics.forEach((d) => {
                 const location = wrapper.notebookLocationAt(d.range);
-                let list = result.get(location.uri);
-                if (!list) {
-                    list = [];
-                    result.set(location.uri, list);
+
+                // Empty location means no fragment (no cell URI)
+                if (location.uri.fragment) {
+                    let list = result.get(location.uri);
+                    if (!list) {
+                        list = [];
+                        result.set(location.uri, list);
+                    }
+                    list.push(this.toNotebookDiagnostic(location.uri, d));
                 }
-                list.push(this.toNotebookDiagnostic(location.uri, d));
             });
         } else if (this.mapOfConcatDocumentsWithCellUris.has(uri.toString())) {
             (this.mapOfConcatDocumentsWithCellUris.get(uri.toString()) || [])

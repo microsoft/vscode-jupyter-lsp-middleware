@@ -197,9 +197,7 @@ suite('Notebook tests', function () {
         // Cell 2 should not have the 'system' problem
         cell2 = window.activeNotebookEditor?.document.cellAt(1)!;
         diagnostics = languages.getDiagnostics(cell2.document.uri);
-        assert.notOk(
-            diagnostics.find((item) => item.message.includes('system'), 'System diag should not be found after moving')
-        );
+        assert.isEmpty(diagnostics, `Diagnostics should be empty after moving ${JSON.stringify(diagnostics)}`);
 
         // Move cell back down, should have same results.
         await focusCell(cell1);
