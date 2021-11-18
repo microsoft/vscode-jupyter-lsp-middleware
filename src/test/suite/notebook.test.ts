@@ -194,12 +194,11 @@ suite('Notebook tests', function () {
             'System message not found'
         );
 
-        // Cell 2 should not
+        // Cell 2 should not have the 'system' problem
         cell2 = window.activeNotebookEditor?.document.cellAt(1)!;
         diagnostics = languages.getDiagnostics(cell2.document.uri);
-        assert.isEmpty(
-            diagnostics,
-            `No diagnostics should be found in the second cell: ${JSON.stringify(diagnostics)}`
+        assert.notOk(
+            diagnostics.find((item) => item.message.includes('system'), 'System diag should not be found after moving')
         );
 
         // Move cell back down, should have same results.
