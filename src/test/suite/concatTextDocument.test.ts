@@ -499,6 +499,9 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(spans[1].realOffset, 0);
                 assert.strictEqual(spans[2].text, ' # type: ignore');
                 assert.strictEqual(spans[3].text, '\nimport pandas as pd\n');
+                assert.strictEqual(spans[0].endOffset, spans[1].startOffset, 'Span offset problem 1a');
+                assert.strictEqual(spans[1].endOffset, spans[2].startOffset, 'Span offset problem 2a');
+                assert.strictEqual(spans[2].endOffset, spans[3].startOffset, 'Span offset problem 3a');
                 spans = concat.createSpans(
                     uris[0],
                     'import numpy as np\n%matplotlib widget\nimport pandas as pd\n',
@@ -510,6 +513,22 @@ suite('concatTextDocument', () => {
                 assert.strictEqual(spans[0].realOffset, 100);
                 assert.strictEqual(spans[1].text, ' # type: ignore');
                 assert.strictEqual(spans[2].text, '\nimport pandas as pd\n');
+                assert.strictEqual(spans[0].endOffset, spans[1].startOffset, 'Span offset problem 1b');
+                assert.strictEqual(spans[1].endOffset, spans[2].startOffset, 'Span offset problem 2b');
+
+                spans = concat.createSpans(uris[0], `%timeit\nprint(ddd)\n!dude\nddx\n\n`, 10, 0);
+
+                assert.strictEqual(spans.length, 5);
+                assert.strictEqual(spans[0].text, '%timeit');
+                assert.strictEqual(spans[0].realOffset, 0);
+                assert.strictEqual(spans[1].text, ' # type: ignore');
+                assert.strictEqual(spans[2].text, '\nprint(ddd)\n!dude');
+                assert.strictEqual(spans[3].text, ' # type: ignore');
+                assert.strictEqual(spans[4].text, '\nddx\n\n');
+                assert.strictEqual(spans[0].endOffset, spans[1].startOffset, 'Span offset problem 1-');
+                assert.strictEqual(spans[1].endOffset, spans[2].startOffset, 'Span offset problem 2-');
+                assert.strictEqual(spans[2].endOffset, spans[3].startOffset, 'Span offset problem 3-');
+                assert.strictEqual(spans[3].endOffset, spans[4].startOffset, 'Span offset problem 4-');
             }
         );
     });

@@ -584,7 +584,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private mapRealToConcatOffset(realOffset: number): number {
         // Find the real span that has this offset
-        const realSpan = this._spans.find((r) => realOffset >= r.realOffset && realOffset < r.realEndOffset);
+        const realSpan = this._spans.find(
+            (r) => r.inRealCell && realOffset >= r.realOffset && realOffset < r.realEndOffset
+        );
         if (realSpan) {
             // If we found a match, add the diff. Note if we have a real span
             // that means any 'real' offset it in it is not part of a split
@@ -737,15 +739,15 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                     )
                 );
 
-                // Offset moves by the line length
-                offset += l.length;
+                // Update offset to next spot
+                offset = spans[spans.length - 1].endOffset;
                 lineOffset += l.length;
 
                 // Beginning of next span is the end of this line (minus the \n)
                 spanOffset = lineOffset;
 
                 // Then push after that a TypeIgnoreSpan
-                spans.push(this.createTypeIgnoreSpan(cellUri, offset, lineOffset + startRealOffset));
+                spans.push(this.createTypeIgnoreSpan(cellUri, offset, spanOffset + startRealOffset));
 
                 // Update offset using last span (length of type ignore)
                 offset = spans[spans.length - 1].endOffset;
