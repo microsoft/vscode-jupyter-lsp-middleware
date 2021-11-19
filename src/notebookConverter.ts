@@ -124,7 +124,7 @@ export class NotebookConverter implements Disposable {
         return wrapper?.handleChange(event);
     }
 
-    public toIncomingDiagnosticsMap(uri: Uri, diagnostics: Diagnostic[]): Map<Uri, Diagnostic[]> {
+    public toNotebookDiagnosticsMap(uri: Uri, diagnostics: Diagnostic[]): Map<Uri, Diagnostic[]> {
         const wrapper = this.getWrapperFromOutgoingUri(uri);
         const result = new Map<Uri, Diagnostic[]>();
 
@@ -144,18 +144,19 @@ export class NotebookConverter implements Disposable {
                 .forEach((cellUri) => result.set(Uri.parse(cellUri), []));
             this.mapOfConcatDocumentsWithCellUris.set(uri.toString(), cellUris);
 
-            // Filter out any diagnostics that have to do with magics or shell escapes
-            var filtered = diagnostics.filter(this.filterMagics.bind(this, wrapper));
-
             // Then for all the new ones, set their values.
-            filtered.forEach((d) => {
-                const location = wrapper.locationAt(d.range);
-                let list = result.get(location.uri);
-                if (!list) {
-                    list = [];
-                    result.set(location.uri, list);
+            diagnostics.forEach((d) => {
+                const location = wrapper.notebookLocationAt(d.range);
+
+                // Empty location means no fragment (no cell URI)
+                if (location.uri.fragment) {
+                    let list = result.get(location.uri);
+                    if (!list) {
+                        list = [];
+                        result.set(location.uri, list);
+                    }
+                    list.push(this.toNotebookDiagnostic(location.uri, d));
                 }
-                list.push(this.toIncomingDiagnostic(location.uri, d));
             });
         } else if (this.mapOfConcatDocumentsWithCellUris.has(uri.toString())) {
             (this.mapOfConcatDocumentsWithCellUris.get(uri.toString()) || [])
@@ -170,21 +171,21 @@ export class NotebookConverter implements Disposable {
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toIncomingWorkspaceSymbols(symbols: SymbolInformation[] | null | undefined) {
+    public toNotebookWorkspaceSymbols(symbols: SymbolInformation[] | null | undefined) {
         if (Array.isArray(symbols)) {
-            return symbols.map(this.toIncomingWorkspaceSymbol.bind(this));
+            return symbols.map(this.toNotebookWorkspaceSymbol.bind(this));
         }
         return symbols ?? undefined;
     }
 
-    public toIncomingWorkspaceEdit(workspaceEdit: WorkspaceEdit | null | undefined): WorkspaceEdit | undefined {
+    public toNotebookWorkspaceEdit(workspaceEdit: WorkspaceEdit | null | undefined): WorkspaceEdit | undefined {
         if (workspaceEdit) {
             // Translate all of the text edits into a URI map
             const translated = new Map<Uri, TextEdit[]>();
             workspaceEdit.entries().forEach(([key, values]) => {
                 values.forEach((e) => {
                     // Location may move this edit to a different cell.
-                    const location = this.toIncomingLocationFromRange(key, e.range);
+                    const location = this.toNotebookLocationFromRange(key, e.range);
 
                     // Save this in the entry
                     let list = translated.get(location.uri);
@@ -207,93 +208,93 @@ export class NotebookConverter implements Disposable {
         return workspaceEdit ?? undefined;
     }
 
-    public toOutgoingDocument(cell: TextDocument): TextDocument {
+    public toConcatDocument(cell: TextDocument): TextDocument {
         const result = this.getTextDocumentWrapper(cell);
         return result?.getConcatDocument() || cell;
     }
 
-    public toOutgoingUri(cell: TextDocument | Uri): Uri {
+    public toConcatUri(cell: TextDocument | Uri): Uri {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const result = this.getTextDocumentWrapper(cell);
         return result ? result.concatUri : uri;
     }
 
-    public toOutgoingPosition(cell: TextDocument, position: Position): Position {
+    public toConcatPosition(cell: TextDocument, position: Position): Position {
         const wrapper = this.getTextDocumentWrapper(cell);
-        return wrapper ? wrapper.positionAt(new Location(cell.uri, position)) : position;
+        return wrapper ? wrapper.concatPositionAt(new Location(cell.uri, position)) : position;
     }
 
-    public toOutgoingPositions(cell: TextDocument, positions: Position[]) {
-        return positions.map((p) => this.toOutgoingPosition(cell, p));
+    public toConcatPositions(cell: TextDocument, positions: Position[]) {
+        return positions.map((p) => this.toConcatPosition(cell, p));
     }
 
-    public toOutgoingRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
+    public toConcatRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
             const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
-            const range = wrapper.rangeOf(uri);
+            const range = wrapper.concatRangeOf(uri);
             return range || cellRange || new Range(new Position(0, 0), new Position(0, 0));
         }
         return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
 
-    public toOutgoingOffset(cell: TextDocument, offset: number): number {
+    public toRealRange(cell: TextDocument | Uri, cellRange: Range | undefined): Range {
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
-            const position = cell.positionAt(offset);
-            const overallPosition = wrapper.positionAt(new Location(cell.uri, position));
-            return wrapper.offsetAt(overallPosition);
+            const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
+            const range = wrapper.realRangeOf(uri);
+            return range || cellRange || new Range(new Position(0, 0), new Position(0, 0));
         }
-        return offset;
+        return cellRange || new Range(new Position(0, 0), new Position(0, 0));
     }
 
-    public toOutgoingContext(cell: TextDocument, context: CodeActionContext): CodeActionContext {
+    public toConcatContext(cell: TextDocument, context: CodeActionContext): CodeActionContext {
         return {
             ...context,
-            diagnostics: context.diagnostics.map(this.toOutgoingDiagnostic.bind(this, cell))
+            diagnostics: context.diagnostics.map(this.toConcatDiagnostic.bind(this, cell))
         };
     }
 
-    public toIncomingHover(cell: TextDocument, hover: Hover | null | undefined): Hover | undefined {
+    public toNotebookHover(cell: TextDocument, hover: Hover | null | undefined): Hover | undefined {
         if (hover && hover.range) {
             return {
                 ...hover,
-                range: this.toIncomingRange(cell, hover.range)
+                range: this.toNotebookRange(cell, hover.range)
             };
         }
         return hover ?? undefined;
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toIncomingCompletions(
+    public toNotebookCompletions(
         cell: TextDocument,
         completions: CompletionItem[] | CompletionList | null | undefined
     ) {
         if (completions) {
             if (Array.isArray(completions)) {
-                return completions.map(this.toIncomingCompletion.bind(this, cell));
+                return completions.map(this.toNotebookCompletion.bind(this, cell));
             }
             return {
                 ...completions,
-                items: completions.items.map(this.toIncomingCompletion.bind(this, cell))
+                items: completions.items.map(this.toNotebookCompletion.bind(this, cell))
             };
         }
         return completions;
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toIncomingLocations(location: Definition | Location | Location[] | LocationLink[] | null | undefined) {
+    public toNotebookLocations(location: Definition | Location | Location[] | LocationLink[] | null | undefined) {
         if (Array.isArray(location)) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (<any>location).map(this.toIncomingLocationOrLink.bind(this));
+            return (<any>location).map(this.toNotebookLocationOrLink.bind(this));
         }
         if (location?.range) {
-            return this.toIncomingLocationFromRange(location.uri, location.range);
+            return this.toNotebookLocationFromRange(location.uri, location.range);
         }
         return location;
     }
 
-    public toIncomingHighlight(
+    public toNotebookHighlight(
         cell: TextDocument,
         highlight: DocumentHighlight[] | null | undefined
     ): DocumentHighlight[] | undefined {
@@ -306,7 +307,7 @@ export class NotebookConverter implements Disposable {
         }
         const result: DocumentHighlight[] = [];
         for (let h of highlight) {
-            const loc = wrapper.locationAt(h.range);
+            const loc = wrapper.notebookLocationAt(h.range);
             if (loc.uri.toString() === cell.uri.toString()) {
                 result.push({ ...h, range: loc.range });
             }
@@ -315,35 +316,35 @@ export class NotebookConverter implements Disposable {
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public toIncomingSymbols(cell: TextDocument, symbols: SymbolInformation[] | DocumentSymbol[] | null | undefined) {
+    public toNotebookSymbols(cell: TextDocument, symbols: SymbolInformation[] | DocumentSymbol[] | null | undefined) {
         if (symbols && Array.isArray(symbols) && symbols.length) {
             if (symbols[0] instanceof DocumentSymbol) {
-                return (<DocumentSymbol[]>symbols).map(this.toIncomingSymbolFromDocumentSymbol.bind(this, cell));
+                return (<DocumentSymbol[]>symbols).map(this.toNotebookSymbolFromDocumentSymbol.bind(this, cell));
             }
-            return (<SymbolInformation[]>symbols).map(this.toIncomingSymbolFromSymbolInformation.bind(this, cell.uri));
+            return (<SymbolInformation[]>symbols).map(this.toNotebookSymbolFromSymbolInformation.bind(this, cell.uri));
         }
         return symbols ?? undefined;
     }
 
-    public toIncomingSymbolFromSymbolInformation(cellUri: Uri, symbol: SymbolInformation): SymbolInformation {
+    public toNotebookSymbolFromSymbolInformation(cellUri: Uri, symbol: SymbolInformation): SymbolInformation {
         return {
             ...symbol,
-            location: this.toIncomingLocationFromRange(cellUri, symbol.location.range)
+            location: this.toNotebookLocationFromRange(cellUri, symbol.location.range)
         };
     }
 
-    public toIncomingDiagnostic(cell: TextDocument | Uri, diagnostic: Diagnostic): Diagnostic {
+    public toNotebookDiagnostic(cell: TextDocument | Uri, diagnostic: Diagnostic): Diagnostic {
         return {
             ...diagnostic,
-            range: this.toIncomingRange(cell, diagnostic.range),
+            range: this.toNotebookRange(cell, diagnostic.range),
             relatedInformation: diagnostic.relatedInformation
-                ? diagnostic.relatedInformation.map(this.toIncomingRelatedInformation.bind(this, cell))
+                ? diagnostic.relatedInformation.map(this.toNotebookRelatedInformation.bind(this, cell))
                 : undefined
         };
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public toIncomingActions(_cell: TextDocument, actions: (Command | CodeAction)[] | null | undefined): undefined {
+    public toNotebookActions(_cell: TextDocument, actions: (Command | CodeAction)[] | null | undefined): undefined {
         if (Array.isArray(actions)) {
             // Disable for now because actions are handled directly by the LS sometimes (at least in pylance)
             // If we translate or use them they will either
@@ -354,27 +355,27 @@ export class NotebookConverter implements Disposable {
         return actions ?? undefined;
     }
 
-    public toIncomingCodeLenses(cell: TextDocument, lenses: CodeLens[] | null | undefined): CodeLens[] | undefined {
+    public toNotebookCodeLenses(cell: TextDocument, lenses: CodeLens[] | null | undefined): CodeLens[] | undefined {
         if (Array.isArray(lenses)) {
             return lenses.map((c) => ({
                 ...c,
-                range: this.toIncomingRange(cell, c.range)
+                range: this.toNotebookRange(cell, c.range)
             }));
         }
         return lenses ?? undefined;
     }
 
-    public toIncomingEdits(cell: TextDocument, edits: TextEdit[] | null | undefined): TextEdit[] | undefined {
+    public toNotebookEdits(cell: TextDocument, edits: TextEdit[] | null | undefined): TextEdit[] | undefined {
         if (Array.isArray(edits)) {
             return edits.map((e) => ({
                 ...e,
-                range: this.toIncomingRange(cell, e.range)
+                range: this.toNotebookRange(cell, e.range)
             }));
         }
         return edits ?? undefined;
     }
 
-    public toIncomingRename(
+    public toNotebookRename(
         cell: TextDocument,
         rangeOrRename:
             | Range
@@ -393,24 +394,24 @@ export class NotebookConverter implements Disposable {
         | undefined {
         if (rangeOrRename) {
             if (rangeOrRename instanceof Range) {
-                return this.toIncomingLocationFromRange(cell, rangeOrRename).range;
+                return this.toNotebookLocationFromRange(cell, rangeOrRename).range;
             }
             return {
                 ...rangeOrRename,
-                range: this.toIncomingLocationFromRange(cell, rangeOrRename.range).range
+                range: this.toNotebookLocationFromRange(cell, rangeOrRename.range).range
             };
         }
         return rangeOrRename ?? undefined;
     }
 
-    public toIncomingDocumentLinks(
+    public toNotebookDocumentLinks(
         cell: TextDocument,
         links: DocumentLink[] | null | undefined
     ): DocumentLink[] | undefined {
         if (links && Array.isArray(links)) {
             return links.map((l) => {
                 const uri = l.target ? l.target : cell.uri;
-                const location = this.toIncomingLocationFromRange(uri, l.range);
+                const location = this.toNotebookLocationFromRange(uri, l.range);
                 return {
                     ...l,
                     range: location.range,
@@ -421,31 +422,31 @@ export class NotebookConverter implements Disposable {
         return links ?? undefined;
     }
 
-    public toIncomingRange(cell: TextDocument | Uri, range: Range): Range {
+    public toNotebookRange(cell: TextDocument | Uri, range: Range): Range {
         // This is dangerous as the URI is not remapped (location uri may be different)
-        return this.toIncomingLocationFromRange(cell, range).range;
+        return this.toNotebookLocationFromRange(cell, range).range;
     }
 
-    public toIncomingPosition(cell: TextDocument | Uri, position: Position): Position {
+    public toNotebookPosition(cell: TextDocument | Uri, position: Position): Position {
         // This is dangerous as the URI is not remapped (location uri may be different)
-        return this.toIncomingLocationFromRange(cell, new Range(position, position)).range.start;
+        return this.toNotebookLocationFromRange(cell, new Range(position, position)).range.start;
     }
 
-    public toIncomingOffset(cell: TextDocument | Uri, offset: number): number {
+    public toNotebookOffset(cell: TextDocument | Uri, offset: number): number {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const wrapper = this.getWrapperFromOutgoingUri(uri);
         if (wrapper) {
-            return wrapper.cellOffsetAt(offset);
+            return wrapper.notebookOffsetAt(uri, offset);
         }
         return offset;
     }
 
-    public toIncomingUri(outgoingUri: Uri, range?: Range) {
+    public toNotebookUri(outgoingUri: Uri, range?: Range) {
         const wrapper = this.getWrapperFromOutgoingUri(outgoingUri);
         let result: Uri | undefined;
         if (wrapper) {
             if (range) {
-                const location = wrapper.locationAt(range);
+                const location = wrapper.notebookLocationAt(range);
                 result = location.uri;
             } else {
                 result = wrapper.notebookUri;
@@ -462,7 +463,7 @@ export class NotebookConverter implements Disposable {
         return result || outgoingUri;
     }
 
-    public toIncomingColorInformations(cellUri: Uri, colorInformations: ColorInformation[] | null | undefined) {
+    public toNotebookColorInformations(cellUri: Uri, colorInformations: ColorInformation[] | null | undefined) {
         if (Array.isArray(colorInformations)) {
             // Need to filter out color information for other cells. Pylance
             // will return it for all.
@@ -470,7 +471,7 @@ export class NotebookConverter implements Disposable {
                 .map((c) => {
                     return {
                         color: c.color,
-                        location: this.toIncomingLocationFromRange(cellUri, c.range)
+                        location: this.toNotebookLocationFromRange(cellUri, c.range)
                     };
                 })
                 .filter((cl) => cl.location.uri.fragment == cellUri.fragment)
@@ -483,38 +484,38 @@ export class NotebookConverter implements Disposable {
         }
     }
 
-    public toIncomingColorPresentations(cellUri: Uri, colorPresentations: ColorPresentation[] | null | undefined) {
+    public toNotebookColorPresentations(cellUri: Uri, colorPresentations: ColorPresentation[] | null | undefined) {
         if (Array.isArray(colorPresentations)) {
             return colorPresentations.map((c) => {
                 return {
                     ...c,
                     additionalTextEdits: c.additionalTextEdits
-                        ? this.toIncomingTextEdits(cellUri, c.additionalTextEdits)
+                        ? this.toNotebookTextEdits(cellUri, c.additionalTextEdits)
                         : undefined,
-                    textEdit: c.textEdit ? this.toIncomingTextEdit(cellUri, c.textEdit) : undefined
+                    textEdit: c.textEdit ? this.toNotebookTextEdit(cellUri, c.textEdit) : undefined
                 };
             });
         }
     }
 
-    public toIncomingTextEdits(cellUri: Uri, textEdits: TextEdit[] | null | undefined) {
+    public toNotebookTextEdits(cellUri: Uri, textEdits: TextEdit[] | null | undefined) {
         if (Array.isArray(textEdits)) {
-            return textEdits.map((t) => this.toIncomingTextEdit(cellUri, t));
+            return textEdits.map((t) => this.toNotebookTextEdit(cellUri, t));
         }
     }
 
-    public toIncomingTextEdit(cellUri: Uri, textEdit: TextEdit) {
+    public toNotebookTextEdit(cellUri: Uri, textEdit: TextEdit) {
         return {
             ...textEdit,
-            range: this.toIncomingRange(cellUri, textEdit.range)
+            range: this.toNotebookRange(cellUri, textEdit.range)
         };
     }
 
-    public toIncomingFoldingRanges(cellUri: Uri, ranges: FoldingRange[] | null | undefined) {
+    public toNotebookFoldingRanges(cellUri: Uri, ranges: FoldingRange[] | null | undefined) {
         if (Array.isArray(ranges)) {
             return ranges
                 .map((r) =>
-                    this.toIncomingLocationFromRange(
+                    this.toNotebookLocationFromRange(
                         cellUri,
                         new Range(new Position(r.start, 0), new Position(r.end, 0))
                     )
@@ -529,85 +530,85 @@ export class NotebookConverter implements Disposable {
         }
     }
 
-    public toIncomingSelectionRanges(cellUri: Uri, ranges: SelectionRange[] | null | undefined) {
+    public toNotebookSelectionRanges(cellUri: Uri, ranges: SelectionRange[] | null | undefined) {
         if (Array.isArray(ranges)) {
-            return ranges.map((r) => this.toIncomingSelectionRange(cellUri, r));
+            return ranges.map((r) => this.toNotebookSelectionRange(cellUri, r));
         }
     }
 
-    public toIncomingSelectionRange(cellUri: Uri, range: SelectionRange): SelectionRange {
+    public toNotebookSelectionRange(cellUri: Uri, range: SelectionRange): SelectionRange {
         return {
-            parent: range.parent ? this.toIncomingSelectionRange(cellUri, range.parent) : undefined,
-            range: this.toIncomingRange(cellUri, range.range)
+            parent: range.parent ? this.toNotebookSelectionRange(cellUri, range.parent) : undefined,
+            range: this.toNotebookRange(cellUri, range.range)
         };
     }
 
-    public toIncomingCallHierarchyItems(
+    public toNotebookCallHierarchyItems(
         cellUri: Uri,
         items: CallHierarchyItem | CallHierarchyItem[] | null | undefined
     ) {
         if (Array.isArray(items)) {
-            return items.map((r) => this.toIncomingCallHierarchyItem(cellUri, r));
+            return items.map((r) => this.toNotebookCallHierarchyItem(cellUri, r));
         } else if (items) {
-            return this.toIncomingCallHierarchyItem(cellUri, items);
+            return this.toNotebookCallHierarchyItem(cellUri, items);
         }
         return undefined;
     }
 
-    public toIncomingCallHierarchyItem(cellUri: Uri, item: CallHierarchyItem) {
+    public toNotebookCallHierarchyItem(cellUri: Uri, item: CallHierarchyItem) {
         return {
             ...item,
             uri: cellUri,
-            range: this.toIncomingRange(cellUri, item.range),
-            selectionRange: this.toIncomingRange(cellUri, item.selectionRange)
+            range: this.toNotebookRange(cellUri, item.range),
+            selectionRange: this.toNotebookRange(cellUri, item.selectionRange)
         };
     }
 
-    public toIncomingCallHierarchyIncomingCallItems(
+    public toNotebookCallHierarchyIncomingCallItems(
         cellUri: Uri,
         items: CallHierarchyIncomingCall[] | null | undefined
     ) {
         if (Array.isArray(items)) {
-            return items.map((r) => this.toIncomingCallHierarchyIncomingCallItem(cellUri, r));
+            return items.map((r) => this.toNotebookCallHierarchyIncomingCallItem(cellUri, r));
         }
         return undefined;
     }
 
-    public toIncomingCallHierarchyIncomingCallItem(
+    public toNotebookCallHierarchyIncomingCallItem(
         cellUri: Uri,
         item: CallHierarchyIncomingCall
     ): CallHierarchyIncomingCall {
         return {
-            from: this.toIncomingCallHierarchyItem(cellUri, item.from),
-            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(cellUri, r))
+            from: this.toNotebookCallHierarchyItem(cellUri, item.from),
+            fromRanges: item.fromRanges.map((r) => this.toNotebookRange(cellUri, r))
         };
     }
 
-    public toIncomingCallHierarchyOutgoingCallItems(
+    public toNotebookCallHierarchyOutgoingCallItems(
         cellUri: Uri,
         items: CallHierarchyOutgoingCall[] | null | undefined
     ) {
         if (Array.isArray(items)) {
-            return items.map((r) => this.toIncomingCallHierarchyOutgoingCallItem(cellUri, r));
+            return items.map((r) => this.toNotebookCallHierarchyOutgoingCallItem(cellUri, r));
         }
         return undefined;
     }
 
-    public toIncomingCallHierarchyOutgoingCallItem(
+    public toNotebookCallHierarchyOutgoingCallItem(
         cellUri: Uri,
         item: CallHierarchyOutgoingCall
     ): CallHierarchyOutgoingCall {
         return {
-            to: this.toIncomingCallHierarchyItem(cellUri, item.to),
-            fromRanges: item.fromRanges.map((r) => this.toIncomingRange(cellUri, r))
+            to: this.toNotebookCallHierarchyItem(cellUri, item.to),
+            fromRanges: item.fromRanges.map((r) => this.toNotebookRange(cellUri, r))
         };
     }
 
-    public toIncomingSemanticEdits(cellUri: Uri, items: SemanticTokensEdits | SemanticTokens | null | undefined) {
+    public toNotebookSemanticEdits(cellUri: Uri, items: SemanticTokensEdits | SemanticTokens | null | undefined) {
         if (items && 'edits' in items) {
             return {
                 ...items,
-                edits: items.edits.map((e) => this.toIncomingSemanticEdit(cellUri, e))
+                edits: items.edits.map((e) => this.toNotebookSemanticEdit(cellUri, e))
             };
         } else if (items) {
             return items;
@@ -615,20 +616,20 @@ export class NotebookConverter implements Disposable {
         return undefined;
     }
 
-    public toIncomingSemanticEdit(cellUri: Uri, edit: SemanticTokensEdit) {
+    public toNotebookSemanticEdit(cellUri: Uri, edit: SemanticTokensEdit) {
         return {
             ...edit,
-            start: this.toIncomingOffset(cellUri, edit.start)
+            start: this.toNotebookOffset(cellUri, edit.start)
         };
     }
 
-    public toIncomingSemanticTokens(cellUri: Uri, tokens: SemanticTokens | null | undefined) {
+    public toNotebookSemanticTokens(cellUri: Uri, tokens: SemanticTokens | null | undefined) {
         if (tokens) {
             const wrapper = this.getTextDocumentWrapper(cellUri);
             // First line offset is the wrong number. It is from the beginning of the concat doc and not the
             // cell.
             if (wrapper && tokens.data.length > 0) {
-                const startOfCell = wrapper.positionAt(new Location(cellUri, new Position(0, 0)));
+                const startOfCell = wrapper.concatPositionAt(new Location(cellUri, new Position(0, 0)));
 
                 // Note to self: If tokenization stops working, might be pylance's fault. It does handle
                 // range requests but was returning stuff outside the range.
@@ -644,11 +645,11 @@ export class NotebookConverter implements Disposable {
         return undefined;
     }
 
-    public toIncomingLinkedEditingRanges(cellUri: Uri, items: LinkedEditingRanges | null | undefined) {
+    public toNotebookLinkedEditingRanges(cellUri: Uri, items: LinkedEditingRanges | null | undefined) {
         if (items) {
             return {
                 ...items,
-                ranges: items.ranges.map((e) => this.toIncomingRange(cellUri, e))
+                ranges: items.ranges.map((e) => this.toNotebookRange(cellUri, e))
             };
         }
     }
@@ -661,34 +662,34 @@ export class NotebookConverter implements Disposable {
         }
     }
 
-    private toIncomingWorkspaceSymbol(symbol: SymbolInformation): SymbolInformation {
+    private toNotebookWorkspaceSymbol(symbol: SymbolInformation): SymbolInformation {
         // Figure out what cell if any the symbol is for
-        return this.toIncomingSymbolFromSymbolInformation(symbol.location.uri, symbol);
+        return this.toNotebookSymbolFromSymbolInformation(symbol.location.uri, symbol);
     }
 
     /* Renable this if actions can be translated
-    private toIncomingAction(cell: TextDocument, action: Command | CodeAction): Command | CodeAction {
+    private toNotebookAction(cell: TextDocument, action: Command | CodeAction): Command | CodeAction {
         if (action instanceof CodeAction) {
             return {
                 ...action,
-                command: action.command ? this.toIncomingCommand(cell, action.command) : undefined,
+                command: action.command ? this.toNotebookCommand(cell, action.command) : undefined,
                 diagnostics: action.diagnostics
-                    ? action.diagnostics.map(this.toIncomingDiagnostic.bind(this, cell))
+                    ? action.diagnostics.map(this.toNotebookDiagnostic.bind(this, cell))
                     : undefined
             };
         }
-        return this.toIncomingCommand(cell, action);
+        return this.toNotebookCommand(cell, action);
     }
 
-    private toIncomingCommand(cell: TextDocument, command: Command): Command {
+    private toNotebookCommand(cell: TextDocument, command: Command): Command {
         return {
             ...command,
-            arguments: command.arguments ? command.arguments.map(this.toIncomingArgument.bind(this, cell)) : undefined
+            arguments: command.arguments ? command.arguments.map(this.toNotebookArgument.bind(this, cell)) : undefined
         };
     }
 
 
-    private toIncomingArgument(cell: TextDocument, argument: any): any {
+    private toNotebookArgument(cell: TextDocument, argument: any): any {
         // URIs in a command should be remapped to the cell document if part
         // of one of our open notebooks
         if (isUri(argument)) {
@@ -705,95 +706,95 @@ export class NotebookConverter implements Disposable {
         }
         if (typeof argument === 'object' && argument.hasOwnProperty('start') && argument.hasOwnProperty('end')) {
             // This is a range like object. Convert it too.
-            return this.toIncomingRange(cell, this.toRange(<Range>argument));
+            return this.toNotebookRange(cell, this.toRange(<Range>argument));
         }
         if (typeof argument === 'object' && argument.hasOwnProperty('line') && argument.hasOwnProperty('character')) {
             // This is a position like object. Convert it too.
-            return this.toIncomingPosition(cell, this.toPosition(<Position>argument));
+            return this.toNotebookPosition(cell, this.toPosition(<Position>argument));
         }
         return argument;
     }
     */
 
-    private toOutgoingDiagnostic(cell: TextDocument, diagnostic: Diagnostic): Diagnostic {
+    private toConcatDiagnostic(cell: TextDocument, diagnostic: Diagnostic): Diagnostic {
         return {
             ...diagnostic,
-            range: this.toOutgoingRange(cell, diagnostic.range),
+            range: this.toConcatRange(cell, diagnostic.range),
             relatedInformation: diagnostic.relatedInformation
-                ? diagnostic.relatedInformation.map(this.toOutgoingRelatedInformation.bind(this, cell))
+                ? diagnostic.relatedInformation.map(this.toConcatRelatedInformation.bind(this, cell))
                 : undefined
         };
     }
 
-    private toOutgoingRelatedInformation(
+    private toConcatRelatedInformation(
         cell: TextDocument,
         relatedInformation: DiagnosticRelatedInformation
     ): DiagnosticRelatedInformation {
-        const outgoingDoc = this.toOutgoingDocument(cell);
+        const outgoingDoc = this.toConcatDocument(cell);
         return {
             ...relatedInformation,
             location:
                 relatedInformation.location.uri === outgoingDoc.uri
-                    ? this.toOutgoingLocation(cell, relatedInformation.location)
+                    ? this.toConcatLocation(cell, relatedInformation.location)
                     : relatedInformation.location
         };
     }
 
-    private toOutgoingLocation(cell: TextDocument, location: Location): Location {
+    private toConcatLocation(cell: TextDocument, location: Location): Location {
         return {
-            uri: this.toOutgoingDocument(cell).uri,
-            range: this.toOutgoingRange(cell, location.range)
+            uri: this.toConcatDocument(cell).uri,
+            range: this.toConcatRange(cell, location.range)
         };
     }
 
-    private toIncomingRelatedInformation(
+    private toNotebookRelatedInformation(
         cell: TextDocument | Uri,
         relatedInformation: DiagnosticRelatedInformation
     ): DiagnosticRelatedInformation {
-        const outgoingUri = this.toOutgoingUri(cell);
+        const outgoingUri = this.toConcatUri(cell);
         return {
             ...relatedInformation,
             location:
                 relatedInformation.location.uri === outgoingUri
-                    ? this.toIncomingLocationFromLocation(relatedInformation.location)
+                    ? this.toNotebookLocationFromLocation(relatedInformation.location)
                     : relatedInformation.location
         };
     }
 
-    private toIncomingSymbolFromDocumentSymbol(cell: TextDocument, docSymbol: DocumentSymbol): DocumentSymbol {
+    private toNotebookSymbolFromDocumentSymbol(cell: TextDocument, docSymbol: DocumentSymbol): DocumentSymbol {
         return {
             ...docSymbol,
-            range: this.toIncomingRange(cell, docSymbol.range),
-            selectionRange: this.toIncomingRange(cell, docSymbol.selectionRange),
-            children: docSymbol.children.map(this.toIncomingSymbolFromDocumentSymbol.bind(this, cell))
+            range: this.toNotebookRange(cell, docSymbol.range),
+            selectionRange: this.toNotebookRange(cell, docSymbol.selectionRange),
+            children: docSymbol.children.map(this.toNotebookSymbolFromDocumentSymbol.bind(this, cell))
         };
     }
 
-    private toIncomingLocationFromLocation(location: Location): Location {
+    private toNotebookLocationFromLocation(location: Location): Location {
         if (this.locationNeedsConversion(location.uri)) {
-            const uri = this.toIncomingUri(location.uri, location.range);
+            const uri = this.toNotebookUri(location.uri, location.range);
 
             return {
                 uri,
-                range: this.toIncomingRange(uri, location.range)
+                range: this.toNotebookRange(uri, location.range)
             };
         }
 
         return location;
     }
 
-    private toIncomingLocationLinkFromLocationLink(locationLink: LocationLink): LocationLink {
+    private toNotebookLocationLinkFromLocationLink(locationLink: LocationLink): LocationLink {
         if (this.locationNeedsConversion(locationLink.targetUri)) {
-            const uri = this.toIncomingUri(locationLink.targetUri, locationLink.targetRange);
+            const uri = this.toNotebookUri(locationLink.targetUri, locationLink.targetRange);
 
             return {
                 originSelectionRange: locationLink.originSelectionRange
-                    ? this.toIncomingRange(uri, locationLink.originSelectionRange)
+                    ? this.toNotebookRange(uri, locationLink.originSelectionRange)
                     : undefined,
                 targetUri: uri,
-                targetRange: this.toIncomingRange(uri, locationLink.targetRange),
+                targetRange: this.toNotebookRange(uri, locationLink.targetRange),
                 targetSelectionRange: locationLink.targetSelectionRange
-                    ? this.toIncomingRange(uri, locationLink.targetSelectionRange)
+                    ? this.toNotebookRange(uri, locationLink.targetSelectionRange)
                     : undefined
             };
         }
@@ -801,13 +802,13 @@ export class NotebookConverter implements Disposable {
         return locationLink;
     }
 
-    private toIncomingLocationOrLink(location: Location | LocationLink) {
+    private toNotebookLocationOrLink(location: Location | LocationLink) {
         // Split on if we are dealing with a Location or a LocationLink
         if ('targetUri' in location) {
             // targetUri only for LocationLinks
-            return this.toIncomingLocationLinkFromLocationLink(location);
+            return this.toNotebookLocationLinkFromLocationLink(location);
         }
-        return this.toIncomingLocationFromLocation(location);
+        return this.toNotebookLocationFromLocation(location);
     }
 
     // Returns true if the given location needs conversion
@@ -816,31 +817,31 @@ export class NotebookConverter implements Disposable {
         return locationUri.scheme === NotebookCellScheme || this.getWrapperFromOutgoingUri(locationUri) !== undefined;
     }
 
-    private toIncomingCompletion(cell: TextDocument, item: CompletionItem) {
+    private toNotebookCompletion(cell: TextDocument, item: CompletionItem) {
         if (item.range) {
             if (item.range instanceof Range) {
                 return {
                     ...item,
-                    range: this.toIncomingRange(cell, item.range)
+                    range: this.toNotebookRange(cell, item.range)
                 };
             }
             return {
                 ...item,
                 range: {
-                    inserting: this.toIncomingRange(cell, item.range.inserting),
-                    replacing: this.toIncomingRange(cell, item.range.replacing)
+                    inserting: this.toNotebookRange(cell, item.range.inserting),
+                    replacing: this.toNotebookRange(cell, item.range.replacing)
                 }
             };
         }
         return item;
     }
 
-    private toIncomingLocationFromRange(cell: TextDocument | Uri, range: Range): Location {
+    private toNotebookLocationFromRange(cell: TextDocument | Uri, range: Range): Location {
         const uri = cell instanceof Uri ? <Uri>cell : cell.uri;
         const wrapper = this.getTextDocumentWrapper(cell);
         if (wrapper) {
-            const startLoc = wrapper.locationAt(range.start);
-            const endLoc = wrapper.locationAt(range.end);
+            const startLoc = wrapper.notebookLocationAt(range.start);
+            const endLoc = wrapper.notebookLocationAt(range.end);
             return {
                 uri: startLoc.uri,
                 range: new Range(startLoc.range.start, endLoc.range.end)
@@ -878,16 +879,5 @@ export class NotebookConverter implements Disposable {
             this.activeWrappers.set(key, result);
         }
         return result;
-    }
-
-    private filterMagics(wrapper: NotebookWrapper, value: Diagnostic): boolean {
-        // Get the code at the range
-        const text = wrapper.getText(value.range);
-
-        // Only skip diagnostics on the front of the line (spacing?)
-        if (text && value.range.start.character == 0 && (text.startsWith('%') || text.startsWith('!'))) {
-            return false;
-        }
-        return true;
     }
 }

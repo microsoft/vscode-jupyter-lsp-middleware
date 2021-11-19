@@ -19,21 +19,26 @@ suite('Editing Tests', () => {
             ],
             (notebookDocument: NotebookDocument) => {
                 const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
                 assert.strictEqual(concat.getConcatDocument().languageId, 'python');
-                assert.strictEqual(concat.getText(), ['print(1)', 'print(2)', 'foo = 2', 'print(foo)', ''].join('\n'));
+                assert.strictEqual(
+                    concat.getText(),
+                    ['import IPython\nIPython.get_ipython()', 'print(1)', 'print(2)', 'foo = 2', 'print(foo)', ''].join(
+                        '\n'
+                    )
+                );
 
                 // Verify if we delete markdown, we still have same count
                 const markdown = notebookDocument.getCells()[2];
                 notebookDocument.getCells().splice(2, 1);
                 concat.handleClose(markdown.document);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
 
                 // Verify if we delete python, we still have new count
                 const python = notebookDocument.getCells()[1];
                 notebookDocument.getCells().splice(1, 1);
                 concat.handleClose(python.document);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
             }
         );
     });
