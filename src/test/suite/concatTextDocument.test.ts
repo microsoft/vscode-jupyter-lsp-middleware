@@ -8,6 +8,7 @@ import * as path from 'path';
 import { generateWrapper, InteractiveScheme, mockTextDocument, withTestNotebook } from './helper';
 import { Location, NotebookCellKind, NotebookDocument, Position, Uri, Range, DocumentFilter } from 'vscode';
 import { InteractiveInputScheme, score } from '../../common/utils';
+import { NotebookConcatDocument } from '../../notebookConcatDocument';
 
 const HeaderText = 'import IPython\nIPython.get_ipython()';
 
@@ -468,6 +469,47 @@ suite('concatTextDocument', () => {
                         ''
                     ].join('\n')
                 );
+            }
+        );
+    });
+
+    test('Span testing', () => {
+        withTestNotebook(
+            Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
+            [
+                [['await print(1)'], 'python', NotebookCellKind.Code, [], {}],
+                [['test'], 'markdown', NotebookCellKind.Markup, [], {}],
+                [['%foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}],
+                [['%%foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}],
+                [['!foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
+            ],
+            (notebookDocument: NotebookDocument) => {
+                const wrapper = generateWrapper(notebookDocument);
+                const concat = wrapper.getConcatDocument() as NotebookConcatDocument;
+                const uris = wrapper.getCells();
+                let spans = concat.createSpans(
+                    uris[0],
+                    'import numpy as np\n%matplotlib widget\nimport pandas as pd\n',
+                    0,
+                    0
+                );
+                assert.strictEqual(spans.length, 4);
+                assert.strictEqual(spans[0].text, 'import IPython\nIPython.get_ipython()\n');
+                assert.strictEqual(spans[1].text, 'import numpy as np\n%matplotlib widget');
+                assert.strictEqual(spans[1].realOffset, 0);
+                assert.strictEqual(spans[2].text, ' # type: ignore');
+                assert.strictEqual(spans[3].text, '\nimport pandas as pd\n');
+                spans = concat.createSpans(
+                    uris[0],
+                    'import numpy as np\n%matplotlib widget\nimport pandas as pd\n',
+                    100,
+                    100
+                );
+                assert.strictEqual(spans.length, 3);
+                assert.strictEqual(spans[0].text, 'import numpy as np\n%matplotlib widget');
+                assert.strictEqual(spans[0].realOffset, 100);
+                assert.strictEqual(spans[1].text, ' # type: ignore');
+                assert.strictEqual(spans[2].text, '\nimport pandas as pd\n');
             }
         );
     });

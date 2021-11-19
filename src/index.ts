@@ -24,20 +24,29 @@ export function createNotebookMiddleware(
     traceInfo: (...args: any[]) => void,
     cellSelector: DocumentSelector,
     pythonPath: string,
-    isDocumentAllowed: (uri: Uri) => boolean
+    isDocumentAllowed: (uri: Uri) => boolean,
+    getNotebookHeader: (uri: Uri) => string
 ): NotebookMiddleware {
     // LanguageClients are created per interpreter (as they start) with a selector for all notebooks
     // Middleware swallows all requests for notebooks that don't match itself (isDocumentAllowed returns false)
-    return new NotebookMiddlewareAddon(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed);
+    return new NotebookMiddlewareAddon(
+        getClient,
+        traceInfo,
+        cellSelector,
+        pythonPath,
+        isDocumentAllowed,
+        getNotebookHeader
+    );
 }
 
 export function createPylanceMiddleware(
     getClient: () => LanguageClient | undefined,
     cellSelector: DocumentSelector,
     pythonPath: string,
-    isDocumentAllowed: (uri: Uri) => boolean
+    isDocumentAllowed: (uri: Uri) => boolean,
+    getNotebookHeader: (uri: Uri) => string
 ): NotebookMiddleware {
     // LanguageClients are created per interpreter (as they start) with a selector for all notebooks
     // Middleware swallows all requests for notebooks that don't match itself (isDocumentAllowed returns false)
-    return new PylanceMiddlewareAddon(getClient, cellSelector, pythonPath, isDocumentAllowed);
+    return new PylanceMiddlewareAddon(getClient, cellSelector, pythonPath, isDocumentAllowed, getNotebookHeader);
 }

@@ -20,8 +20,14 @@ export class NotebookWrapper implements vscode.Disposable {
     public get notebookUri() {
         return this.concatDocument.notebookUri;
     }
-    private concatDocument: NotebookConcatDocument = new NotebookConcatDocument();
-    constructor(private readonly selector: vscode.DocumentSelector, public readonly key: string) {}
+    private concatDocument: NotebookConcatDocument;
+    constructor(
+        private readonly selector: vscode.DocumentSelector,
+        public readonly key: string,
+        getNotebookHeader: (uri: vscode.Uri) => string
+    ) {
+        this.concatDocument = new NotebookConcatDocument(getNotebookHeader);
+    }
     public dispose() {
         this.concatDocument.dispose();
     }

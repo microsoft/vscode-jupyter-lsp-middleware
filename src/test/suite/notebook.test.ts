@@ -67,7 +67,8 @@ suite('Notebook tests', function () {
             'lsp-middleware-test',
             NOTEBOOK_SELECTOR,
             'notebook',
-            shouldProvideIntellisense
+            shouldProvideIntellisense,
+            () => 'xlist = [4]'
         );
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).
@@ -283,6 +284,14 @@ suite('Notebook tests', function () {
         codeCell = window.activeNotebookEditor?.document.cellAt(1)!;
         diagnostics = await waitForDiagnostics(codeCell.document.uri);
         assert.isNotEmpty(diagnostics, 'Deleting sys should create diagnostics');
+    });
+    test('Verify startup commands', async () => {
+        const codeCell = await insertCodeCell('print(xlist)');
+        // Need to sleep because diagnostics that are empty cannot be waited for as they're the default
+        await sleep(1000);
+        let diagnostics = languages.getDiagnostics(codeCell.document.uri);
+        assert.isEmpty(diagnostics, `No diagnostics should be found`);
+        await deleteCell(0);
     });
     test('Document highlights', async () => {
         await insertCodeCell('import sys');

@@ -861,15 +861,16 @@ function createMiddleware(
     traceInfo: (...args: any[]) => void,
     cellSelector: DocumentSelector,
     pythonPath: string,
-    isDocumentAllowed: (uri: vscode.Uri) => boolean
+    isDocumentAllowed: (uri: vscode.Uri) => boolean,
+    notebookHeader: () => string
 ) {
     switch (middlewareType) {
         case 'hiding':
             return createHidingMiddleware();
         case 'pylance':
-            return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed);
+            return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
         case 'notebook':
-            return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed);
+            return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
     }
 }
 
@@ -886,7 +887,8 @@ async function startLanguageServer(
     middlewareType: MiddlewareType,
     pythonPath: string,
     selector: DocumentSelector,
-    shouldProvideIntellisense: (uri: vscode.Uri) => boolean
+    shouldProvideIntellisense: (uri: vscode.Uri) => boolean,
+    notebookHeader: () => string
 ): Promise<LanguageServer> {
     const bundlePath = path.join(languageServerFolder, 'server.bundle.js');
     const nonBundlePath = path.join(languageServerFolder, 'server.js');
@@ -918,7 +920,8 @@ async function startLanguageServer(
         traceInfo,
         selector,
         pythonPath,
-        shouldProvideIntellisense
+        shouldProvideIntellisense,
+        notebookHeader
     );
 
     // Add custom message handling for notebook cell movement
@@ -968,7 +971,8 @@ export async function createLanguageServer(
     outputChannel: string,
     selector: DocumentSelector,
     middlewareType: MiddlewareType,
-    shouldProvideIntellisense: (uri: vscode.Uri) => boolean
+    shouldProvideIntellisense: (uri: vscode.Uri) => boolean,
+    notebookHeader: () => string
 ): Promise<LanguageServer | undefined> {
     // Python should be installed too.
     const python = vscode.extensions.getExtension('ms-python.python');
@@ -990,13 +994,14 @@ export async function createLanguageServer(
             middlewareType,
             pythonPath,
             selector,
-            shouldProvideIntellisense
+            shouldProvideIntellisense,
+            notebookHeader
         );
     }
 }
 
 export function generateWrapper(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const wrapper = new NotebookWrapper('python', `1`);
+    const wrapper = new NotebookWrapper('python', `1`, () => '');
     notebook.getCells().forEach((c) => wrapper.handleOpen(c.document));
     if (extraCells) {
         extraCells.forEach((c) => wrapper.handleOpen(c));
