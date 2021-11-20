@@ -108,7 +108,8 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
         private readonly getClient: () => LanguageClient | undefined,
         private readonly selector: string | DocumentSelector,
         private readonly pythonPath: string,
-        private readonly isDocumentAllowed: (uri: Uri) => boolean
+        private readonly isDocumentAllowed: (uri: Uri) => boolean,
+        private readonly getNotebookHeader: (uri: Uri) => string
     ) {
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
@@ -133,6 +134,9 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
             for (const [i, item] of params.items.entries()) {
                 if (item.section === 'python') {
                     settings[i].pythonPath = this.pythonPath;
+                    settings[i].notebookHeader = this.getNotebookHeader(
+                        item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
+                    );
                 }
             }
 

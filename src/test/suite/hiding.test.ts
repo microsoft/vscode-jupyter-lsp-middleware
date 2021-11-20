@@ -49,7 +49,8 @@ suite('Hiding tests', function () {
             'lsp-middleware-test',
             NOTEBOOK_SELECTOR,
             'hiding',
-            shouldProvideIntellisense
+            shouldProvideIntellisense,
+            () => ''
         );
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).

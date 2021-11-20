@@ -117,9 +117,10 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         private readonly traceInfo: (...args: any[]) => void,
         cellSelector: string | DocumentSelector,
         private readonly pythonPath: string,
-        private readonly isDocumentAllowed: (uri: Uri) => boolean
+        private readonly isDocumentAllowed: (uri: Uri) => boolean,
+        getNotebookHeader: (uri: Uri) => string
     ) {
-        this.converter = new NotebookConverter(cellSelector);
+        this.converter = new NotebookConverter(cellSelector, getNotebookHeader);
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);

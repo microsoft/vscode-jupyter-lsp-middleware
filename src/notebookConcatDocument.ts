@@ -91,6 +91,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     private _lines: NotebookConcatLine[] = [];
     private _realLines: NotebookConcatLine[] = [];
 
+    constructor(private readonly getNotebookHeader: (uri: vscode.Uri) => string) {}
+
     public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams | undefined {
         this._version++;
         const changes: protocol.TextDocumentContentChangeEvent[] = [];
@@ -582,7 +584,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     private mapRealToConcatOffset(realOffset: number): number {
         // Find the real span that has this offset
-        const realSpan = this._spans.find((r) => realOffset >= r.realOffset && realOffset < r.realEndOffset);
+        const realSpan = this._spans.find(
+            (r) => r.inRealCell && realOffset >= r.realOffset && realOffset < r.realEndOffset
+        );
         if (realSpan) {
             // If we found a match, add the diff. Note if we have a real span
             // that means any 'real' offset it in it is not part of a split
@@ -667,6 +671,28 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
     }
 
     private createHeaderSpans(cellUri: vscode.Uri): NotebookSpan[] {
+        let extraHeader = this.getNotebookHeader(cellUri);
+
+        if (extraHeader.length) {
+            // Make sure it ends with a line feed
+            if (!extraHeader.endsWith('\n')) {
+                extraHeader = `${extraHeader}\n`;
+            }
+            return [
+                {
+                    fragment: -1,
+                    uri: cellUri,
+                    inRealCell: false,
+                    startOffset: 0,
+                    endOffset: HeaderAddition.length + extraHeader.length,
+                    realOffset: 0,
+                    realEndOffset: 0,
+                    text: `${HeaderAddition}${extraHeader}`,
+                    realText: ''
+                }
+            ];
+        }
+
         return [
             {
                 fragment: -1,
@@ -682,7 +708,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         ];
     }
 
-    private createSpans(cellUri: vscode.Uri, text: string, offset: number, realOffset: number): NotebookSpan[] {
+    // Public for unit testing
+    public createSpans(cellUri: vscode.Uri, text: string, offset: number, realOffset: number): NotebookSpan[] {
         // Go through each line, gathering up spans
         const lines = splitLines(text);
         let spans: NotebookSpan[] = [];
@@ -697,49 +724,51 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         }
 
         let startRealOffset = realOffset;
-        let textOffset = 0;
+        let spanOffset = 0;
+        let lineOffset = 0;
         lines.forEach((l) => {
             if (TypeIgnoreTransforms.find((transform) => transform.regex.test(l))) {
                 // This means up to the current text needs to be turned into a span
                 spans.push(
                     this.createSpan(
                         cellUri,
-                        text.substring(0, textOffset + l.length), // Dont include \n in first span
-                        text.substring(0, textOffset + l.length),
+                        text.substring(spanOffset, lineOffset + l.length), // Dont include \n in first span
+                        text.substring(spanOffset, lineOffset + l.length),
                         offset,
-                        realOffset
+                        spanOffset + startRealOffset
                     )
                 );
 
-                // Offset moves by the line length
-                offset += l.length;
-                realOffset += l.length;
-                textOffset += l.length;
+                // Update offset to next spot
+                offset = spans[spans.length - 1].endOffset;
+                lineOffset += l.length;
+
+                // Beginning of next span is the end of this line (minus the \n)
+                spanOffset = lineOffset;
 
                 // Then push after that a TypeIgnoreSpan
-                spans.push(this.createTypeIgnoreSpan(cellUri, offset, realOffset));
+                spans.push(this.createTypeIgnoreSpan(cellUri, offset, spanOffset + startRealOffset));
 
                 // Update offset using last span (length of type ignore)
                 offset = spans[spans.length - 1].endOffset;
 
-                // Just move the text offset so the \n will end up on the
-                // next span
-                textOffset += 1;
+                // Add on the /n for the line offset
+                lineOffset += 1;
             } else {
                 // Move up another line
-                textOffset += l.length + 1;
+                lineOffset += l.length + 1;
             }
         });
 
         // See if anymore real text left
-        if (realOffset - startRealOffset < text.length) {
+        if (spanOffset < text.length) {
             spans.push(
                 this.createSpan(
                     cellUri,
-                    text.substring(realOffset - startRealOffset),
-                    text.substring(realOffset - startRealOffset),
+                    text.substring(spanOffset),
+                    text.substring(spanOffset),
                     offset,
-                    realOffset
+                    startRealOffset + spanOffset
                 )
             );
         }

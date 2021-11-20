@@ -49,7 +49,8 @@ suite('Pylance tests', function () {
             'lsp-middleware-test',
             NOTEBOOK_SELECTOR,
             'pylance',
-            shouldProvideIntellisense
+            shouldProvideIntellisense,
+            () => ''
         );
     });
     // Use same notebook without starting kernel in every single test (use one for whole suite).

@@ -58,7 +58,7 @@ export class NotebookConverter implements Disposable {
 
     private mapOfConcatDocumentsWithCellUris = new Map<string, string[]>();
 
-    constructor(private cellSelector: DocumentSelector) {}
+    constructor(private cellSelector: DocumentSelector, private getNotebookHeader: (uri: Uri) => string) {}
 
     private static getDocumentKey(uri: Uri): string {
         if (uri.scheme === InteractiveInputScheme) {
@@ -875,7 +875,7 @@ export class NotebookConverter implements Disposable {
         const key = NotebookConverter.getDocumentKey(uri);
         let result = this.activeWrappers.get(key);
         if (!result) {
-            result = new NotebookWrapper(this.cellSelector, key);
+            result = new NotebookWrapper(this.cellSelector, key, this.getNotebookHeader);
             this.activeWrappers.set(key, result);
         }
         return result;
