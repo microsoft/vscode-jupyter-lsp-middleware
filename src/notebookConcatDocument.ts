@@ -6,7 +6,6 @@ import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
 import * as shajs from 'sha.js';
-import * as fastMyersDiff from 'fast-myers-diff';
 import {
     findLastIndex,
     InteractiveInputScheme,
@@ -93,6 +92,9 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
     constructor(private readonly getNotebookHeader: (uri: vscode.Uri) => string) {}
 
+    // Handles changes in the real cells and maps them to changes in the concat document.
+    // This log expression is useful for debugging
+    // >>> Changes from edit {JSON.stringify(edit)} and {JSON.stringify(oldText)} to {JSON.stringify(newText)} with diff {JSON.stringify(diff)} and changes {JSON.stringify(changes)}
     public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams | undefined {
         this._version++;
         const changes: protocol.TextDocumentContentChangeEvent[] = [];
@@ -102,9 +104,10 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 try {
                     // Get old text for diffing
                     const oldSpans = this._spans.filter((s) => s.uri.toString() === e.textDocument.uri);
-                    const oldText = oldSpans.map((s) => s.text).join('');
+                    const oldCellLines = this._lines.filter((l) => l.cellUri.toString() === e.textDocument.uri);
 
                     // Apply the edit to the real spans
+                    const editText = edit.newText.replace(/\r/g, '');
                     const realText = this.getRealText(oldSpans[0].uri);
                     const realCellLines = this._realLines.filter((r) => r.cellUri.toString() === e.textDocument.uri);
                     const firstLineOffset = realCellLines[0].offset;
@@ -112,10 +115,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                         realCellLines[edit.range.start.line].offset + edit.range.start.character - firstLineOffset;
                     const endOffset =
                         realCellLines[edit.range.end.line].offset + edit.range.end.character - firstLineOffset;
-                    const editedText = `${realText.slice(0, startOffset)}${edit.newText.replace(
-                        /\r/g,
-                        ''
-                    )}${realText.slice(endOffset)}`;
+                    const editedText = `${realText.slice(0, startOffset)}${editText}${realText.slice(endOffset)}`;
 
                     // Create new spans from the edited text
                     const newSpans = this.createSpans(
@@ -124,36 +124,39 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                         oldSpans[0].startOffset,
                         oldSpans[0].realOffset
                     );
-                    const newText = newSpans.map((s) => s.text).join('');
 
-                    // Diff the two pieces of text
-                    // see docs here on what it returns: https://github.com/gliese1337/fast-myers-diff
-                    // Essentially it's an array of indices, one item in the array per change detected
-                    // indices are start/end offsets for each piece of text where the change occurred
-                    const diff = [...fastMyersDiff.diff(oldText, newText)];
+                    // If new spans or old spans have non line spanning fakes (meaning chars in the middle of a line)
+                    // just do a complete change for the whole cell
+                    const oldSpansWithFakes = oldSpans.find((s) => !s.inRealCell && !s.text.endsWith('\n'));
+                    const newSpansWithFakes = newSpans.find((s) => !s.inRealCell && !s.text.endsWith('\n'));
 
-                    // Diff should have an array of numbers. These are
-                    // offsets in the old text translating to offsets in the new text
-                    if (diff.length > 0) {
-                        const oldTextStart = diff[0][0];
-                        const oldTextEnd = diff[diff.length - 1][1];
-                        const newTextStart = diff[0][2];
-                        const newTextEnd = diff[diff.length - 1][3];
-
-                        // New text is from the new text changes
-                        const text = newText.substring(newTextStart, newTextEnd);
+                    // If no spans that might need partial edits, then translate the edit.
+                    if (!oldSpansWithFakes && !newSpansWithFakes) {
+                        // Translate the edit directly.
+                        const oldTextStart = this.mapRealToConcatOffset(startOffset);
+                        const oldTextEnd = this.mapRealToConcatOffset(endOffset);
 
                         // Compute positions in old text based on change locations
-                        const fromPosition = this.getEditPosition(
-                            oldSpans[0].uri,
-                            oldSpans[0].startOffset + oldTextStart
-                        );
-                        const toPosition = this.getEditPosition(oldSpans[0].uri, oldSpans[0].startOffset + oldTextEnd);
+                        const fromPosition = this.getEditPosition(oldSpans[0].uri, oldTextStart);
+                        const toPosition = this.getEditPosition(oldSpans[0].uri, oldTextEnd);
 
                         changes.push({
-                            text,
+                            text: editText,
                             range: this.createSerializableRange(fromPosition, toPosition),
                             rangeLength: oldTextEnd - oldTextStart
+                        } as any);
+                    } else {
+                        // Just say the whole thing changed. Much simpler than trying to compute
+                        // a new diff. This should be the odd ball case.
+                        // DEBT: Could try using the fast-myers-diff again. Problem was with deletes across multiple lines.
+                        const newText = newSpans.map((s) => s.text).join('');
+                        const fromPosition = oldCellLines[0].range.start;
+                        const toPosition = oldCellLines[oldCellLines.length - 1].rangeIncludingLineBreak.end;
+
+                        changes.push({
+                            text: newText,
+                            range: this.createSerializableRange(fromPosition, toPosition),
+                            rangeLength: oldCellLines[oldCellLines.length - 1].endOffset + 1 - oldCellLines[0].offset
                         } as any);
                     }
 
@@ -613,12 +616,14 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         return concatOffset;
     }
 
-    private getEditPosition(cellUri: vscode.Uri, offset: number): vscode.Position {
+    private getEditPosition(cellUri: vscode.Uri, offset: number, inclusive?: boolean): vscode.Position {
         // Get all the lines for this cell
         const cellLines = this._lines.filter((l) => l.cellUri.toString() == cellUri.toString());
 
         // Find the line that contains this offset. If not found, use the last line in the cell
-        const line = cellLines.find((l) => offset >= l.offset && offset < l.endOffset);
+        const line = inclusive
+            ? cellLines.find((l) => offset >= l.offset && offset <= l.endOffset)
+            : cellLines.find((l) => offset >= l.offset && offset < l.endOffset);
         if (line) {
             return new vscode.Position(line.lineNumber, offset - line.offset);
         } else {
