@@ -124,6 +124,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                         oldSpans[0].startOffset,
                         oldSpans[0].realOffset
                     );
+                    const newText = newSpans.map((s) => s.text).join('');
 
                     // If new spans or old spans have non line spanning fakes (meaning chars in the middle of a line)
                     // just do a complete change for the whole cell
@@ -132,13 +133,24 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
                     // If no spans that might need partial edits, then translate the edit.
                     if (!oldSpansWithFakes && !newSpansWithFakes) {
-                        // Translate the edit directly.
-                        const oldTextStart = this.mapRealToConcatOffset(startOffset);
-                        const oldTextEnd = this.mapRealToConcatOffset(endOffset);
+                        // Concat line should line up with real line. Just find its corresponding line
+                        const oldTextStart = this.mapRealToConcatOffset(startOffset + firstLineOffset);
+                        const oldTextEnd = this.mapRealToConcatOffset(endOffset + firstLineOffset);
 
-                        // Compute positions in old text based on change locations
-                        const fromPosition = this.getEditPosition(oldSpans[0].uri, oldTextStart);
-                        const toPosition = this.getEditPosition(oldSpans[0].uri, oldTextEnd);
+                        const oldStartLine = oldCellLines.find(
+                            (l) => oldTextStart >= l.offset && oldTextStart < l.endOffset
+                        );
+                        const oldEndLine = oldCellLines.find((l) => oldTextEnd >= l.offset && oldTextEnd < l.endOffset);
+
+                        // Characters should match because there are no 'partial' lines in this cell
+                        const fromPosition = new vscode.Position(
+                            oldStartLine?.lineNumber || edit.range.start.line,
+                            edit.range.start.character
+                        );
+                        const toPosition = new vscode.Position(
+                            oldEndLine?.lineNumber || edit.range.end.line,
+                            edit.range.end.character
+                        );
 
                         changes.push({
                             text: editText,
@@ -149,7 +161,6 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                         // Just say the whole thing changed. Much simpler than trying to compute
                         // a new diff. This should be the odd ball case.
                         // DEBT: Could try using the fast-myers-diff again. Problem was with deletes across multiple lines.
-                        const newText = newSpans.map((s) => s.text).join('');
                         const fromPosition = oldCellLines[0].range.start;
                         const toPosition = oldCellLines[oldCellLines.length - 1].rangeIncludingLineBreak.end;
 
@@ -614,25 +625,6 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
             return concatSpan.realOffset;
         }
         return concatOffset;
-    }
-
-    private getEditPosition(cellUri: vscode.Uri, offset: number, inclusive?: boolean): vscode.Position {
-        // Get all the lines for this cell
-        const cellLines = this._lines.filter((l) => l.cellUri.toString() == cellUri.toString());
-
-        // Find the line that contains this offset. If not found, use the last line in the cell
-        const line = inclusive
-            ? cellLines.find((l) => offset >= l.offset && offset <= l.endOffset)
-            : cellLines.find((l) => offset >= l.offset && offset < l.endOffset);
-        if (line) {
-            return new vscode.Position(line.lineNumber, offset - line.offset);
-        } else {
-            // Otherwise we're off the end of the cell
-            return new vscode.Position(
-                cellLines[cellLines.length - 1].lineNumber,
-                cellLines[cellLines.length - 1].text.length
-            );
-        }
     }
 
     private createSpan(
