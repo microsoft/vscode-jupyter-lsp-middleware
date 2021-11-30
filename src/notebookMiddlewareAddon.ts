@@ -173,7 +173,9 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             if (isOpen) {
                 // Send this to our converter and then the change notification to the server
                 const params = this.converter.handleRefresh(notebook);
-                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                if (params) {
+                    client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                }
             }
         }
     }
