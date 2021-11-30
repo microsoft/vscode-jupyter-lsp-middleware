@@ -312,6 +312,12 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                 this._closed = true;
             }
             return this.toDidChangeTextDocumentParams(changes);
+        } else if (e.uri.includes(InteractiveInputScheme)) {
+            // Interactive window is actually closing.
+            this._closed = true;
+            this._spans = [];
+            this._lines = [];
+            this._realLines = [];
         }
     }
 
@@ -711,8 +717,8 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
         const lines = splitLines(text);
         let spans: NotebookSpan[] = [];
 
-        // If this the absolute first cell, add the header spans in
-        if (offset == 0) {
+        // If this the absolute first cell, add the header spans in (skip if input box)
+        if (offset == 0 && !cellUri.scheme.includes(InteractiveInputScheme)) {
             spans = this.createHeaderSpans(cellUri);
             offset = spans[spans.length - 1].endOffset;
 

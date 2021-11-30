@@ -265,7 +265,7 @@ suite('concatTextDocument', () => {
                     ['print("bar")', 'p.']
                 );
                 const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 4);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 2);
                 // assert.strictEqual(concat.languageId, 'python');
                 // assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.'].join('\n'));
                 // assert.strictEqual(concat.lineAt(0).text, 'print(1)');
@@ -274,7 +274,7 @@ suite('concatTextDocument', () => {
                 // assert.strictEqual(concat.lineAt(3).text, 'print("bar")');
                 // assert.strictEqual(concat.lineAt(4).text, 'p.');
 
-                assert.deepStrictEqual(concat.notebookLocationAt(new Position(3, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(concat.notebookLocationAt(new Position(1, 2)).range, new Range(1, 2, 1, 2));
             }
         );
     });
