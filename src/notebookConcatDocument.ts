@@ -450,7 +450,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
 
         // Find the matching concat lines
         const firstLine = this._lines.find((l) => startOffset >= l.offset && startOffset < l.endOffset);
-        const lastLine = this._lines.find((l) => endOffset >= l.offset && endOffset < l.endOffset);
+        const lastLine = this._lines.find((l) => endOffset >= l.offset && endOffset <= l.endOffset);
         if (firstLine && lastLine) {
             return new vscode.Range(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
         }
