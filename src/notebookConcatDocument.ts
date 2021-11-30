@@ -132,7 +132,7 @@ export class NotebookConcatDocument implements vscode.TextDocument, vscode.Dispo
                     const newSpansWithFakes = newSpans.find((s) => !s.inRealCell && !s.text.endsWith('\n'));
 
                     // If no spans that might need partial edits, then translate the edit.
-                    if (!oldSpansWithFakes && !newSpansWithFakes) {
+                    if (!oldSpansWithFakes && !newSpansWithFakes && newSpans.length == oldSpans.length) {
                         // Concat line should line up with real line. Just find its corresponding line
                         const oldTextStart = this.mapRealToConcatOffset(startOffset + firstLineOffset);
                         const oldTextEnd = this.mapRealToConcatOffset(endOffset + firstLineOffset);
