@@ -532,4 +532,42 @@ suite('concatTextDocument', () => {
             }
         );
     });
+
+    test('Edits across lines', () => {
+        withTestNotebook(
+            Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
+            [
+                [['print(1)'], 'python', NotebookCellKind.Code, [], {}],
+                [['test'], 'markdown', NotebookCellKind.Markup, [], {}]
+            ],
+            (notebookDocument: NotebookDocument) => {
+                const concat = generateWrapper(notebookDocument);
+                assert.strictEqual(concat.getConcatDocument().lineCount, 3);
+                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+
+                // Try insertion
+                const changes = concat.handleChange({
+                    document: notebookDocument.cellAt(0).document,
+                    contentChanges: [
+                        {
+                            range: new Range(new Position(0, 8), new Position(0, 8)),
+                            rangeOffset: 0,
+                            rangeLength: 0,
+                            text: '\n  '
+                        }
+                    ],
+                    reason: undefined
+                });
+
+                assert.ok(changes, 'No changes output');
+                assert.strictEqual(changes.contentChanges.length, 1, `Content changes wrong length`);
+                assert.strictEqual(changes.contentChanges[0].text, '\n  ', `Content changes dont have correct text`);
+                assert.strictEqual(
+                    (changes.contentChanges[0] as any).range.start.line,
+                    2,
+                    `Invalid start line for changes`
+                );
+            }
+        );
+    });
 });

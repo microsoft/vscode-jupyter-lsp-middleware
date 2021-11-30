@@ -4,7 +4,9 @@
   "description": "",
   "main": "./extension.js",
   "publisher": "ms-vscode",
-  "enableProposedApi": true,
+  "enabledApiProposals": [
+    "notebookEditor"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true
