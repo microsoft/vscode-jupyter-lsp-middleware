@@ -670,7 +670,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     ): ProviderResult<ColorPresentation[]> {
         if (this.shouldProvideIntellisense(context.document.uri)) {
             const newDoc = this.converter.toConcatDocument(context.document);
-            const newRange = this.converter.toConcatRange(context.document, context.range);
+            const newRange = this.converter.toRealRange(context.document, context.range);
             const result = next(color, { document: newDoc, range: newRange }, token);
             if (isThenable(result)) {
                 return result.then(
@@ -754,7 +754,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     ): ProviderResult<CallHierarchyIncomingCall[]> {
         if (this.shouldProvideIntellisense(item.uri)) {
             const newUri = this.converter.toConcatUri(item.uri);
-            const newRange = this.converter.toConcatRange(item.uri, item.range);
+            const newRange = this.converter.toRealRange(item.uri, item.range);
             const result = next({ ...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
                 return result.then(
@@ -771,7 +771,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     ): ProviderResult<CallHierarchyOutgoingCall[]> {
         if (this.shouldProvideIntellisense(item.uri)) {
             const newUri = this.converter.toConcatUri(item.uri);
-            const newRange = this.converter.toConcatRange(item.uri, item.range);
+            const newRange = this.converter.toRealRange(item.uri, item.range);
             const result = next({ ...item, uri: newUri, range: newRange }, token);
             if (isThenable(result)) {
                 return result.then(
@@ -823,7 +823,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             const newDoc = this.converter.toConcatDocument(document);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
-            const newRange = this.converter.toConcatRange(document.uri, undefined);
+            const newRange = this.converter.toRealRange(document.uri, undefined);
 
             const params: SemanticTokensRangeParams = {
                 textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
@@ -848,7 +848,7 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     ): ProviderResult<SemanticTokens> {
         if (this.shouldProvideIntellisense(document.uri)) {
             const newDoc = this.converter.toConcatDocument(document);
-            const newRange = this.converter.toConcatRange(document, range);
+            const newRange = this.converter.toRealRange(document, range);
             const result = next(newDoc, newRange, token);
             if (isThenable(result)) {
                 return result.then(this.converter.toNotebookSemanticTokens.bind(this.converter, document.uri));
