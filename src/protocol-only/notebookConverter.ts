@@ -547,7 +547,7 @@ export class NotebookConverter implements IDisposable {
     public toNotebookFoldingRanges(
         cell: protocol.TextDocumentIdentifier | string,
         ranges: protocol.FoldingRange[] | null | undefined
-    ) {
+    ): protocol.FoldingRange[] | null | undefined {
         if (Array.isArray(ranges)) {
             const cellUri = this.toURI(cell);
             return ranges
@@ -560,8 +560,8 @@ export class NotebookConverter implements IDisposable {
                 .filter((l) => l.uri == cellUri.toString())
                 .map((l) => {
                     return {
-                        start: l.range.start.line,
-                        end: l.range.end.line
+                        startLine: l.range.start.line,
+                        endLine: l.range.end.line
                     };
                 });
         }
@@ -593,9 +593,9 @@ export class NotebookConverter implements IDisposable {
         if (Array.isArray(items)) {
             return items.map((r) => this.toNotebookCallHierarchyItem(cell, r));
         } else if (items) {
-            return this.toNotebookCallHierarchyItem(cell, items);
+            return [this.toNotebookCallHierarchyItem(cell, items)];
         }
-        return undefined;
+        return null;
     }
 
     public toNotebookCallHierarchyItem(
@@ -617,7 +617,7 @@ export class NotebookConverter implements IDisposable {
         if (Array.isArray(items)) {
             return items.map((r) => this.toNotebookCallHierarchyIncomingCallItem(cell, r));
         }
-        return undefined;
+        return null;
     }
 
     public toNotebookCallHierarchyIncomingCallItem(
@@ -637,7 +637,7 @@ export class NotebookConverter implements IDisposable {
         if (Array.isArray(items)) {
             return items.map((r) => this.toNotebookCallHierarchyOutgoingCallItem(cell, r));
         }
-        return undefined;
+        return null;
     }
 
     public toNotebookCallHierarchyOutgoingCallItem(
@@ -938,7 +938,8 @@ export class NotebookConverter implements IDisposable {
         return this.activeConcatsOutgoingMap.get(NotebookConverter.getDocumentKey(uri));
     }
 
-    private getConcatDocument(cell: protocol.TextDocumentIdentifier | string): NotebookConcatDocument {
+    // Public for testing
+    public getConcatDocument(cell: protocol.TextDocumentIdentifier | string): NotebookConcatDocument {
         const uri = this.toURI(cell);
         const key = NotebookConverter.getDocumentKey(uri);
         let result = this.activeConcats.get(key);

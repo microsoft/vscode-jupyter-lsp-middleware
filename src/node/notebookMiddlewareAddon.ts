@@ -5,7 +5,7 @@ import * as protocol from 'vscode-languageclient';
 import * as protocolNode from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
+import { asRefreshEvent, isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
 import { NotebookConverter } from '../protocol-only/notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
@@ -27,10 +27,6 @@ import {
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 import { score } from '../common/utils';
-import { RefreshNotebookEvent } from '../protocol-only/types';
-import { TextDocumentWrapper } from './textDocumentWrapper';
-import { RequestType1 } from 'vscode-languageclient';
-import { arrayDiff } from 'vscode-languageclient/lib/common/workspaceFolders';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -103,7 +99,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
             const isOpen = this.converter.isOpen(documentItem);
             if (isOpen) {
                 // Send this to our converter and then the change notification to the server
-                const params = this.converter.handleRefresh(this.asRefreshEvent(notebook));
+                const params = this.converter.handleRefresh(asRefreshEvent(notebook, this.cellSelector));
                 if (params) {
                     client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
                 }
@@ -303,7 +299,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         token: vscode.CancellationToken,
         next: protocol.ResolveCompletionItemSignature
     ): vscode.ProviderResult<vscode.CompletionItem> {
-        // Range should have already been remapped.
+        // vscode.Range should have already been remapped.
 
         // TODO: What if the LS needs to read the range? It won't make sense. This might mean
         // doing this at the extension level is not possible.
@@ -354,79 +350,103 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         }
     }
 
-    public provideReferences(
-        document: TextDocument,
-        position: Position,
+    public async provideReferences(
+        document: vscode.TextDocument,
+        position: vscode.Position,
         options: {
             includeDeclaration: boolean;
         },
-        token: CancellationToken,
-        next: ProvideReferencesSignature
-    ): ProviderResult<Location[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, options, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookLocations.bind(this.converter));
-            }
-            return this.converter.toNotebookLocations(result);
+        token: vscode.CancellationToken,
+        _next: protocol.ProvideReferencesSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.ReferenceParams = {
+                textDocument: newDoc,
+                position: newPos,
+                context: {
+                    includeDeclaration: options.includeDeclaration
+                }
+            };
+            const result = await client.sendRequest(protocolNode.ReferencesRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookLocations(result);
+            return client.protocol2CodeConverter.asReferences(notebookResults);
         }
     }
 
-    public provideDocumentHighlights(
-        document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: ProvideDocumentHighlightsSignature
-    ): ProviderResult<DocumentHighlight[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookHighlight.bind(this.converter, document));
-            }
-            return this.converter.toNotebookHighlight(document, result);
+    public async provideDocumentHighlights(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        _next: protocol.ProvideDocumentHighlightsSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.DocumentHighlightParams = {
+                textDocument: newDoc,
+                position: newPos
+            };
+            const result = await client.sendRequest(protocolNode.DocumentHighlightRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookHighlight(documentId, result);
+            return client.protocol2CodeConverter.asDocumentHighlights(notebookResults);
         }
     }
 
-    public provideDocumentSymbols(
-        document: TextDocument,
-        token: CancellationToken,
-        next: ProvideDocumentSymbolsSignature
-    ): ProviderResult<SymbolInformation[] | DocumentSymbol[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const result = next(newDoc, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookSymbols.bind(this.converter, document));
+    public async provideDocumentSymbols(
+        document: vscode.TextDocument,
+        token: vscode.CancellationToken,
+        _next: protocol.ProvideDocumentSymbolsSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const params: protocol.DocumentSymbolParams = {
+                textDocument: newDoc
+            };
+            const result = await client.sendRequest(protocolNode.DocumentSymbolRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookSymbols(documentId, result);
+            const element = notebookResults ? notebookResults[0] : undefined;
+            if (protocol.DocumentSymbol.is(element)) {
+                return client.protocol2CodeConverter.asDocumentSymbols(notebookResults as protocol.DocumentSymbol[]);
+            } else if (element) {
+                return client.protocol2CodeConverter.asSymbolInformations(
+                    notebookResults as protocol.SymbolInformation[]
+                );
             }
-            return this.converter.toNotebookSymbols(document, result);
         }
     }
 
-    public provideWorkspaceSymbols(
+    public async provideWorkspaceSymbols(
         query: string,
-        token: CancellationToken,
-        next: ProvideWorkspaceSymbolsSignature
-    ): ProviderResult<SymbolInformation[]> {
-        // Is this one possible to check?
-        const result = next(query, token);
-        if (isThenable(result)) {
-            return result.then(this.converter.toNotebookWorkspaceSymbols.bind(this.converter));
+        token: vscode.CancellationToken,
+        _next: protocol.ProvideWorkspaceSymbolsSignature
+    ) {
+        const client = this.getClient();
+        if (client) {
+            const params: protocol.WorkspaceSymbolParams = {
+                query
+            };
+            const result = await client.sendRequest(protocolNode.WorkspaceSymbolRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookWorkspaceSymbols(result);
+            return client.protocol2CodeConverter.asSymbolInformations(notebookResults);
         }
-        return this.converter.toNotebookWorkspaceSymbols(result);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public provideCodeActions(
-        document: TextDocument,
-        _range: Range,
-        _context: CodeActionContext,
-        _token: CancellationToken,
-        _next: ProvideCodeActionsSignature
-    ): ProviderResult<(Command | CodeAction)[]> {
+        document: vscode.TextDocument,
+        _range: vscode.Range,
+        _context: vscode.CodeActionContext,
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideCodeActionsSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideCodeActions not currently supported for notebooks');
             return undefined;
@@ -435,10 +455,10 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public provideCodeLenses(
-        document: TextDocument,
-        _token: CancellationToken,
-        _next: ProvideCodeLensesSignature
-    ): ProviderResult<CodeLens[]> {
+        document: vscode.TextDocument,
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideCodeLensesSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideCodeLenses not currently supported for notebooks');
             return undefined;
@@ -447,11 +467,11 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public resolveCodeLens(
-        codeLens: CodeLens,
-        token: CancellationToken,
-        next: ResolveCodeLensSignature
-    ): ProviderResult<CodeLens> {
-        // Range should have already been remapped.
+        codeLens: vscode.CodeLens,
+        token: vscode.CancellationToken,
+        next: protocol.ResolveCodeLensSignature
+    ) {
+        // vscode.Range should have already been remapped.
 
         // TODO: What if the LS needs to read the range? It won't make sense. This might mean
         // doing this at the extension level is not possible.
@@ -460,11 +480,11 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public provideDocumentFormattingEdits(
-        document: TextDocument,
-        _options: FormattingOptions,
-        _token: CancellationToken,
-        _next: ProvideDocumentFormattingEditsSignature
-    ): ProviderResult<TextEdit[]> {
+        document: vscode.TextDocument,
+        _options: vscode.FormattingOptions,
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideDocumentFormattingEditsSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentFormattingEdits not currently supported for notebooks');
             return undefined;
@@ -473,12 +493,12 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public provideDocumentRangeFormattingEdits(
-        document: TextDocument,
-        _range: Range,
-        _options: FormattingOptions,
-        _token: CancellationToken,
-        _next: ProvideDocumentRangeFormattingEditsSignature
-    ): ProviderResult<TextEdit[]> {
+        document: vscode.TextDocument,
+        _range: vscode.Range,
+        _options: vscode.FormattingOptions,
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideDocumentRangeFormattingEditsSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentRangeFormattingEdits not currently supported for notebooks');
             return undefined;
@@ -487,13 +507,13 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public provideOnTypeFormattingEdits(
-        document: TextDocument,
-        _position: Position,
+        document: vscode.TextDocument,
+        _position: vscode.Position,
         _ch: string,
-        _options: FormattingOptions,
-        _token: CancellationToken,
-        _next: ProvideOnTypeFormattingEditsSignature
-    ): ProviderResult<TextEdit[]> {
+        _options: vscode.FormattingOptions,
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideOnTypeFormattingEditsSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideOnTypeFormattingEdits not currently supported for notebooks');
             return undefined;
@@ -502,12 +522,12 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public provideRenameEdits(
-        document: TextDocument,
-        _position: Position,
+        document: vscode.TextDocument,
+        _position: vscode.Position,
         _newName: string,
-        _token: CancellationToken,
-        _next: ProvideRenameEditsSignature
-    ): ProviderResult<WorkspaceEdit> {
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideRenameEditsSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideRenameEdits not currently supported for notebooks');
             return undefined;
@@ -516,17 +536,11 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public prepareRename(
-        document: TextDocument,
-        _position: Position,
-        _token: CancellationToken,
-        _next: PrepareRenameSignature
-    ): ProviderResult<
-        | Range
-        | {
-              range: Range;
-              placeholder: string;
-          }
-    > {
+        document: vscode.TextDocument,
+        _position: vscode.Position,
+        _token: vscode.CancellationToken,
+        _next: protocol.PrepareRenameSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('prepareRename not currently supported for notebooks');
             return undefined;
@@ -535,10 +549,10 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public provideDocumentLinks(
-        document: TextDocument,
-        _token: CancellationToken,
-        _next: ProvideDocumentLinksSignature
-    ): ProviderResult<DocumentLink[]> {
+        document: vscode.TextDocument,
+        _token: vscode.CancellationToken,
+        _next: protocol.ProvideDocumentLinksSignature
+    ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentLinks not currently supported for notebooks');
             return undefined;
@@ -547,31 +561,42 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     // eslint-disable-next-line class-methods-use-this
     public resolveDocumentLink(
-        link: DocumentLink,
-        token: CancellationToken,
-        next: ResolveDocumentLinkSignature
-    ): ProviderResult<DocumentLink> {
-        // Range should have already been remapped.
+        link: vscode.DocumentLink,
+        token: vscode.CancellationToken,
+        next: protocol.ResolveDocumentLinkSignature
+    ) {
+        // vscode.Range should have already been remapped.
 
         // TODO: What if the LS needs to read the range? It won't make sense. This might mean
         // doing this at the extension level is not possible.
         return next(link, token);
     }
 
-    public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
+    public handleDiagnostics(
+        uri: vscode.Uri,
+        diagnostics: vscode.Diagnostic[],
+        next: protocol.HandleDiagnosticsSignature
+    ): void {
         try {
-            const incomingUri = this.converter.toNotebookUri(uri);
+            const incomingUriString = this.converter.toNotebookUri(uri.toString());
+            const incomingUri = incomingUriString ? vscode.Uri.parse(incomingUriString) : undefined;
+            const client = this.getClient();
             if (
+                client &&
                 incomingUri &&
-                incomingUri != uri &&
+                incomingUriString != uri.toString() &&
                 this.shouldProvideIntellisense(incomingUri) &&
                 !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
             ) {
+                const protocolDiagnostics = client.code2ProtocolConverter.asDiagnostics(diagnostics);
+
                 // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
                 // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
                 // Otherwise old messages for cells that didn't change this time won't go away.
-                const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri, diagnostics);
-                [...newDiagMapping.keys()].forEach((k) => next(k, newDiagMapping.get(k)!));
+                const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri.toString(), protocolDiagnostics);
+                [...newDiagMapping.keys()].forEach((k) =>
+                    next(vscode.Uri.parse(k), client.protocol2CodeConverter.asDiagnostics(newDiagMapping.get(k)!))
+                );
             } else {
                 // Swallow all other diagnostics
                 next(uri, []);
@@ -582,319 +607,315 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         }
     }
 
-    public provideTypeDefinition(
-        document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: ProvideTypeDefinitionSignature
+    public async provideTypeDefinition(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        _next: ProvideTypeDefinitionSignature
     ) {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookLocations.bind(this.converter));
-            }
-            return this.converter.toNotebookLocations(result);
-        }
-    }
-
-    public provideImplementation(
-        document: TextDocument,
-        position: VPosition,
-        token: CancellationToken,
-        next: ProvideImplementationSignature
-    ): ProviderResult<Definition | DefinitionLink[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookLocations.bind(this.converter));
-            }
-            return this.converter.toNotebookLocations(result);
-        }
-    }
-
-    public provideDocumentColors(
-        document: TextDocument,
-        token: CancellationToken,
-        next: ProvideDocumentColorsSignature
-    ): ProviderResult<ColorInformation[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const result = next(newDoc, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookColorInformations.bind(this.converter, document.uri));
-            }
-            return this.converter.toNotebookColorInformations(document.uri, result);
-        }
-    }
-    public provideColorPresentations(
-        color: Color,
-        context: {
-            document: TextDocument;
-            range: Range;
-        },
-        token: CancellationToken,
-        next: ProvideColorPresentationSignature
-    ): ProviderResult<ColorPresentation[]> {
-        if (this.shouldProvideIntellisense(context.document.uri)) {
-            const newDoc = this.converter.toConcatDocument(context.document);
-            const newRange = this.converter.toRealRange(context.document, context.range);
-            const result = next(color, { document: newDoc, range: newRange }, token);
-            if (isThenable(result)) {
-                return result.then(
-                    this.converter.toNotebookColorPresentations.bind(this.converter, context.document.uri)
-                );
-            }
-            return this.converter.toNotebookColorPresentations(context.document.uri, result);
-        }
-    }
-
-    public provideFoldingRanges(
-        document: TextDocument,
-        context: FoldingContext,
-        token: CancellationToken,
-        next: ProvideFoldingRangeSignature
-    ): ProviderResult<FoldingRange[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const result = next(newDoc, context, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookFoldingRanges.bind(this.converter, document.uri));
-            }
-            return this.converter.toNotebookFoldingRanges(document.uri, result);
-        }
-    }
-
-    public provideDeclaration(
-        document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: ProvideDeclarationSignature
-    ): ProviderResult<Declaration> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookLocations.bind(this.converter));
-            }
-            return this.converter.toNotebookLocations(result);
-        }
-    }
-
-    public provideSelectionRanges(
-        document: TextDocument,
-        positions: Position[],
-        token: CancellationToken,
-        next: ProvideSelectionRangeSignature
-    ): ProviderResult<SelectionRange[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPositions = this.converter.toConcatPositions(document, positions);
-            const result = next(newDoc, newPositions, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookSelectionRanges.bind(this.converter, document.uri));
-            }
-            return this.converter.toNotebookSelectionRanges(document.uri, result);
-        }
-    }
-
-    public prepareCallHierarchy(
-        document: TextDocument,
-        positions: Position,
-        token: CancellationToken,
-        next: PrepareCallHierarchySignature
-    ): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPositions = this.converter.toConcatPosition(document, positions);
-            const result = next(newDoc, newPositions, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookCallHierarchyItems.bind(this.converter, document.uri));
-            }
-            return this.converter.toNotebookCallHierarchyItems(document.uri, result);
-        }
-    }
-    public provideCallHierarchyIncomingCalls(
-        item: CallHierarchyItem,
-        token: CancellationToken,
-        next: CallHierarchyIncomingCallsSignature
-    ): ProviderResult<CallHierarchyIncomingCall[]> {
-        if (this.shouldProvideIntellisense(item.uri)) {
-            const newUri = this.converter.toConcatUri(item.uri);
-            const newRange = this.converter.toRealRange(item.uri, item.range);
-            const result = next({ ...item, uri: newUri, range: newRange }, token);
-            if (isThenable(result)) {
-                return result.then(
-                    this.converter.toNotebookCallHierarchyIncomingCallItems.bind(this.converter, item.uri)
-                );
-            }
-            return this.converter.toNotebookCallHierarchyIncomingCallItems(item.uri, result);
-        }
-    }
-    public provideCallHierarchyOutgoingCalls(
-        item: CallHierarchyItem,
-        token: CancellationToken,
-        next: CallHierarchyOutgoingCallsSignature
-    ): ProviderResult<CallHierarchyOutgoingCall[]> {
-        if (this.shouldProvideIntellisense(item.uri)) {
-            const newUri = this.converter.toConcatUri(item.uri);
-            const newRange = this.converter.toRealRange(item.uri, item.range);
-            const result = next({ ...item, uri: newUri, range: newRange }, token);
-            if (isThenable(result)) {
-                return result.then(
-                    this.converter.toNotebookCallHierarchyOutgoingCallItems.bind(this.converter, item.uri)
-                );
-            }
-            return this.converter.toNotebookCallHierarchyOutgoingCallItems(item.uri, result);
-        }
-    }
-
-    public provideDocumentSemanticTokens(
-        document: TextDocument,
-        token: CancellationToken,
-        _next: DocumentSemanticsTokensSignature
-    ): ProviderResult<SemanticTokens> {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
-            const newDoc = this.converter.toConcatDocument(document);
-
-            // Since tokens are for a cell, we need to change the request for a range and not the entire document.
-            const newRange = this.converter.toRealRange(document.uri, undefined);
-
-            const params: SemanticTokensRangeParams = {
-                textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
-                range: client.code2ProtocolConverter.asRange(newRange)
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.TypeDefinitionParams = {
+                textDocument: newDoc,
+                position: newPos
             };
-
-            // Make the request directly (dont use the 'next' value)
-            const result = client.sendRequest(SemanticTokensRangeRequest.type, params, token);
-
-            // Then convert from protocol back to vscode types
-            return result.then((r) => {
-                const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
-                return this.converter.toNotebookSemanticTokens(document.uri, vscodeTokens);
-            });
+            const result = await client.sendRequest(protocolNode.TypeDefinitionRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookLocations(result);
+            return client.protocol2CodeConverter.asDefinitionResult(notebookResults);
         }
     }
-    public provideDocumentSemanticTokensEdits(
-        document: TextDocument,
+
+    public async provideImplementation(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        _next: ProvideImplementationSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.ImplementationParams = {
+                textDocument: newDoc,
+                position: newPos
+            };
+            const result = await client.sendRequest(protocolNode.ImplementationRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookLocations(result);
+            return client.protocol2CodeConverter.asDefinitionResult(notebookResults);
+        }
+    }
+
+    public async provideDocumentColors(
+        document: vscode.TextDocument,
+        token: vscode.CancellationToken,
+        _next: ProvideDocumentColorsSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const params: protocol.DocumentColorParams = {
+                textDocument: newDoc
+            };
+            const result = await client.sendRequest(protocolNode.DocumentColorRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookColorInformations(documentId, result);
+            return client.protocol2CodeConverter.asColorInformations(notebookResults);
+        }
+    }
+    public async provideColorPresentations(
+        color: vscode.Color,
+        context: {
+            document: vscode.TextDocument;
+            range: vscode.Range;
+        },
+        token: vscode.CancellationToken,
+        _next: ProvideColorPresentationSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(context.document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(context.document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newRange = this.converter.toRealRange(documentId, context.range);
+            const params: protocol.ColorPresentationParams = {
+                textDocument: newDoc,
+                range: newRange,
+                color
+            };
+            const result = await client.sendRequest(protocolNode.ColorPresentationRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookColorPresentations(documentId, result);
+            return client.protocol2CodeConverter.asColorPresentations(notebookResults);
+        }
+    }
+
+    public async provideFoldingRanges(
+        document: vscode.TextDocument,
+        _context: vscode.FoldingContext,
+        token: vscode.CancellationToken,
+        _next: ProvideFoldingRangeSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const params: protocol.FoldingRangeParams = {
+                textDocument: newDoc
+            };
+            const result = await client.sendRequest(protocolNode.FoldingRangeRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookFoldingRanges(documentId, result);
+            return client.protocol2CodeConverter.asFoldingRanges(notebookResults);
+        }
+    }
+
+    public async provideDeclaration(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        _next: ProvideDeclarationSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.DeclarationParams = {
+                textDocument: newDoc,
+                position: newPos
+            };
+            const result = await client.sendRequest(protocolNode.DeclarationRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookLocations(result);
+            return client.protocol2CodeConverter.asDeclarationResult(notebookResults);
+        }
+    }
+
+    public async provideSelectionRanges(
+        document: vscode.TextDocument,
+        positions: vscode.Position[],
+        token: vscode.CancellationToken,
+        _next: ProvideSelectionRangeSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPositions = this.converter.toConcatPositions(documentId, positions);
+            const params: protocol.SelectionRangeParams = {
+                textDocument: newDoc,
+                positions: newPositions
+            };
+            const result = await client.sendRequest(protocolNode.SelectionRangeRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookSelectionRanges(documentId, result);
+            return client.protocol2CodeConverter.asSelectionRanges(notebookResults);
+        }
+    }
+
+    public async prepareCallHierarchy(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        _next: PrepareCallHierarchySignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.CallHierarchyPrepareParams = {
+                textDocument: newDoc,
+                position: newPos
+            };
+            const result = await client.sendRequest(protocolNode.CallHierarchyPrepareRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookCallHierarchyItems(documentId, result);
+            return client.protocol2CodeConverter.asCallHierarchyItems(notebookResults);
+        }
+    }
+    public async provideCallHierarchyIncomingCalls(
+        item: vscode.CallHierarchyItem,
+        token: vscode.CancellationToken,
+        _next: CallHierarchyIncomingCallsSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(item.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(item.uri);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newRange = this.converter.toRealRange(documentId, item.range);
+            const newSelectionRange = this.converter.toRealRange(documentId, item.selectionRange);
+            const params: protocol.CallHierarchyIncomingCallsParams = {
+                item: {
+                    ...client.code2ProtocolConverter.asCallHierarchyItem(item),
+                    uri: newDoc.uri,
+                    range: newRange,
+                    selectionRange: newSelectionRange
+                }
+            };
+            const result = await client.sendRequest(protocolNode.CallHierarchyIncomingCallsRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookCallHierarchyIncomingCallItems(documentId, result);
+            return client.protocol2CodeConverter.asCallHierarchyIncomingCalls(notebookResults);
+        }
+    }
+    public async provideCallHierarchyOutgoingCalls(
+        item: vscode.CallHierarchyItem,
+        token: vscode.CancellationToken,
+        _next: CallHierarchyOutgoingCallsSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(item.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(item.uri);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newRange = this.converter.toRealRange(documentId, item.range);
+            const newSelectionRange = this.converter.toRealRange(documentId, item.selectionRange);
+            const params: protocol.CallHierarchyOutgoingCallsParams = {
+                item: {
+                    ...client.code2ProtocolConverter.asCallHierarchyItem(item),
+                    uri: newDoc.uri,
+                    range: newRange,
+                    selectionRange: newSelectionRange
+                }
+            };
+            const result = await client.sendRequest(protocolNode.CallHierarchyOutgoingCallsRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookCallHierarchyOutgoingCallItems(documentId, result);
+            return client.protocol2CodeConverter.asCallHierarchyOutgoingCalls(notebookResults);
+        }
+    }
+
+    public async provideDocumentSemanticTokens(
+        document: vscode.TextDocument,
+        token: vscode.CancellationToken,
+        _next: DocumentSemanticsTokensSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+
+            // Since tokens are for a cell, we need to change the request for a range and not the entire document.
+            const newRange = this.converter.toRealRange(documentId, undefined);
+
+            const params: protocol.SemanticTokensRangeParams = {
+                textDocument: newDoc,
+                range: newRange
+            };
+            const result = await client.sendRequest(protocol.SemanticTokensRangeRequest.type, params, token);
+
+            // Then convert from protocol back to vscode types
+            const notebookResults = this.converter.toNotebookSemanticTokens(documentId, result);
+            return client.protocol2CodeConverter.asSemanticTokens(notebookResults);
+        }
+    }
+    public async provideDocumentSemanticTokensEdits(
+        document: vscode.TextDocument,
         _previousResultId: string,
-        token: CancellationToken,
+        token: vscode.CancellationToken,
         _next: DocumentSemanticsTokensEditsSignature
-    ): ProviderResult<SemanticTokensEdits | SemanticTokens> {
+    ) {
         // Token edits work with previous token response. However pylance
         // doesn't know about the cell so it sends back ALL tokens.
         // Instead just ask for a range.
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
-            const newDoc = this.converter.toConcatDocument(document);
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
 
             // Since tokens are for a cell, we need to change the request for a range and not the entire document.
-            const newRange = this.converter.toRealRange(document.uri, undefined);
+            const newRange = this.converter.toRealRange(documentId, undefined);
 
-            const params: SemanticTokensRangeParams = {
-                textDocument: client.code2ProtocolConverter.asTextDocumentIdentifier(newDoc),
-                range: client.code2ProtocolConverter.asRange(newRange)
+            const params: protocol.SemanticTokensRangeParams = {
+                textDocument: newDoc,
+                range: newRange
             };
-
-            // Make the request directly (dont use the 'next' value)
-            const result = client.sendRequest(SemanticTokensRangeRequest.type, params, token);
+            const result = await client.sendRequest(protocol.SemanticTokensRangeRequest.type, params, token);
 
             // Then convert from protocol back to vscode types
-            return result.then((r) => {
-                const vscodeTokens = client.protocol2CodeConverter.asSemanticTokens(r);
-                return this.converter.toNotebookSemanticTokens(document.uri, vscodeTokens);
-            });
+            const notebookResults = this.converter.toNotebookSemanticTokens(documentId, result);
+            return client.protocol2CodeConverter.asSemanticTokens(notebookResults);
         }
     }
-    public provideDocumentRangeSemanticTokens(
-        document: TextDocument,
-        range: Range,
-        token: CancellationToken,
-        next: DocumentRangeSemanticTokensSignature
-    ): ProviderResult<SemanticTokens> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newRange = this.converter.toRealRange(document, range);
-            const result = next(newDoc, newRange, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookSemanticTokens.bind(this.converter, document.uri));
-            }
-            return this.converter.toNotebookSemanticTokens(document.uri, result);
+    public async provideDocumentRangeSemanticTokens(
+        document: vscode.TextDocument,
+        range: vscode.Range,
+        token: vscode.CancellationToken,
+        _next: DocumentRangeSemanticTokensSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newRange = this.converter.toRealRange(documentId, range);
+            const params: protocol.SemanticTokensRangeParams = {
+                textDocument: newDoc,
+                range: newRange
+            };
+            const result = await client.sendRequest(protocol.SemanticTokensRangeRequest.type, params, token);
+
+            // Then convert from protocol back to vscode types
+            const notebookResults = this.converter.toNotebookSemanticTokens(documentId, result);
+            return client.protocol2CodeConverter.asSemanticTokens(notebookResults);
         }
     }
 
-    public provideLinkedEditingRange(
-        document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: ProvideLinkedEditingRangeSignature
-    ): ProviderResult<LinkedEditingRanges> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPosition = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPosition, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookLinkedEditingRanges.bind(this.converter, document.uri));
-            }
-            return this.converter.toNotebookLinkedEditingRanges(document.uri, result);
-        }
-    }
-
-    private callNext<R1>(
+    public async provideLinkedEditingRange(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        next: (d: vscode.TextDocument, p: vscode.Position, t: vscode.CancellationToken) => vscode.ProviderResult<R1>,
-        converter: (result: R1 | null | undefined) => R1 | null | undefined
+        _next: ProvideLinkedEditingRangeSignature
     ) {
-        if (this.shouldProvideIntellisense(document.uri)) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
             const documentId = this.asTextDocumentIdentifier(document);
-            const newDoc = this.converter.toConcatTextDocument(documentId);
-            const newPos = this.converter.toConcatPosition(documentId, position);
-            const result = next(
-                new TextDocumentWrapper(newDoc),
-                new vscode.Position(newPos.line, newPos.character),
-                token
-            );
-            if (isThenable(result)) {
-                return result.then(converter);
-            }
-            return converter(result);
-        }
-    }
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPosition = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.LinkedEditingRangeParams = {
+                textDocument: newDoc,
+                position: newPosition
+            };
+            const result = await client.sendRequest(protocol.LinkedEditingRangeRequest.type, params, token);
 
-    private callNextWithArg<T1, R1>(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        token: vscode.CancellationToken,
-        arg: T1,
-        next: (
-            d: vscode.TextDocument,
-            p: vscode.Position,
-            arg: T1,
-            t: vscode.CancellationToken
-        ) => vscode.ProviderResult<R1>,
-        converter: (result: R1 | null | undefined) => R1 | null | undefined
-    ) {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const documentId = this.asTextDocumentIdentifier(document);
-            const newDoc = this.converter.toConcatTextDocument(documentId);
-            const newPos = this.converter.toConcatPosition(documentId, position);
-            const result = next(
-                new TextDocumentWrapper(newDoc),
-                new vscode.Position(newPos.line, newPos.character),
-                arg,
-                token
-            );
-            if (isThenable(result)) {
-                return result.then(converter);
-            }
-            return converter(result);
+            // Then convert from protocol back to vscode types
+            const notebookResults = this.converter.toNotebookLinkedEditingRanges(documentId, result);
+            return client.protocol2CodeConverter.asLinkedEditingRanges(notebookResults);
         }
     }
 
@@ -903,9 +924,9 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         return this.isDocumentAllowed(uri);
     }
 
-    private asTextDocumentIdentifier(document: vscode.TextDocument): protocol.TextDocumentIdentifier {
+    private asTextDocumentIdentifier(documentOrUri: vscode.TextDocument | vscode.Uri): protocol.TextDocumentIdentifier {
         return {
-            uri: document.uri.toString()
+            uri: 'uri' in documentOrUri ? documentOrUri.uri.toString() : documentOrUri.toString()
         };
     }
 
@@ -916,96 +937,5 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
             languageId: document.languageId,
             version: document.version
         };
-    }
-
-    private asRefreshEvent(notebook: vscode.NotebookDocument): RefreshNotebookEvent {
-        return {
-            cells: notebook
-                .getCells()
-                .filter((c) => score(c.document, this.cellSelector) > 0)
-                .map((c) => {
-                    return {
-                        textDocument: this.asTextDocumentItem(c.document)
-                    };
-                })
-        };
-    }
-
-    private asCompletionItem(item: vscode.CompletionItem) {
-        const client = this.getClient();
-        return client!.code2ProtocolConverter.asCompletionItem(item);
-    }
-
-    private asCompletionList(
-        list: vscode.CompletionItem[] | vscode.CompletionList<vscode.CompletionItem> | null | undefined
-    ): protocol.CompletionList | protocol.CompletionItem[] | undefined {
-        if (!list) {
-            return undefined;
-        }
-        if (Array.isArray(list)) {
-            return list.map(this.asCompletionItem.bind(this));
-        }
-        return list.items.map(this.asCompletionItem.bind(this));
-    }
-
-    private asHover(result: vscode.Hover | null | undefined): protocol.Hover | undefined | null {
-        if (!result) {
-            return undefined;
-        }
-        return result as any; // Types should be the same if you skip deprecated values?
-    }
-
-    private asLocation(item: vscode.Location | vscode.LocationLink): protocol.Location | protocol.LocationLink {
-        const client = this.getClient();
-        if ('targetUri' in item) {
-            return {
-                targetUri: client!.code2ProtocolConverter.asUri(item.targetUri),
-                targetSelectionRange: client!.code2ProtocolConverter.asRange(item.targetSelectionRange)!,
-                targetRange: client!.code2ProtocolConverter.asRange(item.targetRange)!,
-                originSelectionRange: client!.code2ProtocolConverter.asRange(item.originSelectionRange)!
-            };
-        }
-        return client!.code2ProtocolConverter.asLocation(item);
-    }
-
-    private asLocations(
-        result: vscode.Definition | vscode.LocationLink[] | null | undefined
-    ): protocol.Definition | protocol.LocationLink[] | undefined | null {
-        if (!result) {
-            return undefined;
-        }
-        if (Array.isArray(result)) {
-            return result.map(this.asLocation.bind(this));
-        }
-        return this.asLocation(result); // Types should be the same if you skip deprecated values?
-    }
-
-    private convertCompletions(
-        document: vscode.TextDocument,
-        list: vscode.CompletionItem[] | vscode.CompletionList<vscode.CompletionItem> | null | undefined
-    ) {
-        const client = this.getClient();
-        const documentId = this.asTextDocumentIdentifier(document);
-        const from = this.asCompletionList(list);
-        const to = this.converter.toNotebookCompletions(documentId, from);
-        return client!.protocol2CodeConverter.asCompletionResult(to);
-    }
-
-    private convertHovers(document: vscode.TextDocument, result: vscode.Hover | null | undefined) {
-        const client = this.getClient();
-        const documentId = this.asTextDocumentIdentifier(document);
-        const from = this.asHover(result);
-        const to = this.converter.toNotebookHover(documentId, from);
-        return client!.protocol2CodeConverter.asHover(to);
-    }
-
-    private convertLocations(
-        _document: vscode.TextDocument,
-        result: vscode.Definition | vscode.DefinitionLink[] | null | undefined
-    ) {
-        const client = this.getClient();
-        const from = this.asLocations(result);
-        const to = this.converter.toNotebookLocations(from);
-        return client!.protocol2CodeConverter.asDefinitionResult(to);
     }
 }

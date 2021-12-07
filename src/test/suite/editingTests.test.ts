@@ -4,10 +4,21 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { generateWrapper, withTestNotebook } from './helper';
-import { NotebookCellKind, NotebookDocument, Uri } from 'vscode';
+import * as protocol from 'vscode-languageclient';
+import { generateConcat, withTestNotebook } from './helper';
+import { NotebookCellKind, NotebookDocument, TextDocument, Uri } from 'vscode';
+import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 
 suite('Editing Tests', () => {
+    function close(concat: NotebookConcatDocument, document: TextDocument) {
+        const params: protocol.DidCloseTextDocumentParams = {
+            textDocument: {
+                uri: document.uri.toString()
+            }
+        };
+        return concat.handleClose(params);
+    }
+
     test('Edit a notebook', () => {
         withTestNotebook(
             Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
@@ -18,9 +29,9 @@ suite('Editing Tests', () => {
                 [['foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument);
+                assert.strictEqual(concat.lineCount, 6);
+                assert.strictEqual(concat.languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
                     ['import IPython\nIPython.get_ipython()', 'print(1)', 'print(2)', 'foo = 2', 'print(foo)', ''].join(
@@ -31,14 +42,14 @@ suite('Editing Tests', () => {
                 // Verify if we delete markdown, we still have same count
                 const markdown = notebookDocument.getCells()[2];
                 notebookDocument.getCells().splice(2, 1);
-                concat.handleClose(markdown.document);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
+                close(concat, markdown.document);
+                assert.strictEqual(concat.lineCount, 6);
 
                 // Verify if we delete python, we still have new count
                 const python = notebookDocument.getCells()[1];
                 notebookDocument.getCells().splice(1, 1);
-                concat.handleClose(python.document);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
+                close(concat, python.document);
+                assert.strictEqual(concat.lineCount, 5);
             }
         );
     });

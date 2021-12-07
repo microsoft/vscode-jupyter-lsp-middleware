@@ -23,10 +23,15 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware, NotebookMiddleware } from '../..';
+import {
+    createNotebookMiddleware,
+    createHidingMiddleware,
+    createPylanceMiddleware,
+    NotebookMiddleware
+} from '../../node';
 import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
-import { NotebookWrapper } from '../../notebookWrapper';
+import { NotebookConverter } from '../../protocol-only/notebookConverter';
 
 export interface Ctor<T> {
     new (): T;
@@ -1007,11 +1012,22 @@ export async function createLanguageServer(
     }
 }
 
-export function generateWrapper(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const wrapper = new NotebookWrapper('python', `1`, () => '');
-    notebook.getCells().forEach((c) => wrapper.handleOpen(c.document));
+export function generateConcat(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
+    const wrapper = new NotebookConverter(() => '');
+    const converter = (d: vscode.TextDocument) => {
+        const result: vslc.DidOpenTextDocumentParams = {
+            textDocument: {
+                uri: d.uri.toString(),
+                languageId: d.languageId,
+                version: d.version,
+                text: d.getText()
+            }
+        };
+        return result;
+    };
+    notebook.getCells().forEach((c) => wrapper.handleOpen(converter(c.document)));
     if (extraCells) {
-        extraCells.forEach((c) => wrapper.handleOpen(c));
+        extraCells.forEach((c) => wrapper.handleOpen(converter(c)));
     }
-    return wrapper;
+    return wrapper.getConcatDocument({ uri: notebook.cellAt(0).document.uri.toString() });
 }

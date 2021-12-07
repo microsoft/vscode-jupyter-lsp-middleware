@@ -60,11 +60,11 @@ import {
     ProvideReferencesSignature,
     ProvideRenameEditsSignature,
     ProvideSignatureHelpSignature,
-    ResolveCompletionItemSignature,
+    ResolveCompletionItemSignature
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isNotebookCell } from './common/utils';
+import { isNotebookCell } from '../common/utils';
 import {
     PrepareCallHierarchySignature,
     CallHierarchyIncomingCallsSignature,
