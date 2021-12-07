@@ -5,10 +5,12 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
-import { generateWrapper, InteractiveScheme, mockTextDocument, withTestNotebook } from './helper';
-import { Location, NotebookCellKind, NotebookDocument, Position, Uri, Range, DocumentFilter } from 'vscode';
-import { InteractiveInputScheme, score } from '../../common/utils';
-import { NotebookConcatDocument } from '../../notebookConcatDocument';
+import * as protocol from 'vscode-languageclient';
+import { generateConcat, InteractiveScheme, mockTextDocument, withTestNotebook } from './helper';
+import { TextDocument, NotebookCellKind, NotebookDocument, Uri, DocumentFilter, NotebookCell } from 'vscode';
+import { asRefreshEvent, InteractiveInputScheme, score } from '../../common/utils';
+import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
+import { createLocation, createPosition, createRange } from '../../protocol-only/helper';
 
 const HeaderText = 'import IPython\nIPython.get_ipython()';
 
@@ -28,6 +30,47 @@ suite('concatTextDocument', () => {
         assert.strictEqual(score(mockTextDocument(Uri.file(longer), 'python', []), filter), 10);
     });
 
+    function applyEdit(
+        concat: NotebookConcatDocument,
+        document: TextDocument,
+        line: number,
+        char: number,
+        newText: string,
+        endLine: number = line,
+        endChar: number = char
+    ) {
+        const change: protocol.DidChangeTextDocumentParams = {
+            textDocument: {
+                version: document.version,
+                uri: document.uri.toString()
+            },
+            contentChanges: [
+                {
+                    text: newText,
+                    range: {
+                        start: {
+                            line,
+                            character: char
+                        },
+                        end: {
+                            line: endLine,
+                            character: endChar
+                        }
+                    }
+                }
+            ]
+        };
+        return concat.handleChange(change);
+    }
+
+    function createLocationFromPosition(cell: NotebookCell | TextDocument, line: number, char: number) {
+        const uri = 'document' in cell ? cell.document.uri : cell.uri;
+        return createLocation(uri.toString(), {
+            start: { line, character: char },
+            end: { line, character: char }
+        });
+    }
+
     test(`edits to a cell`, () => {
         withTestNotebook(
             Uri.from({ scheme: 'vscode-notebook', path: 'test.ipynb' }),
@@ -37,56 +80,20 @@ suite('concatTextDocument', () => {
                 [['foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
+                const concat = generateConcat(notebookDocument);
 
                 // Try insertion
-                concat.handleChange({
-                    document: notebookDocument.cellAt(2).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 0), new Position(0, 0)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: 'bar'
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(2).document, 0, 0, 'bar');
                 assert.strictEqual(
                     concat.getText(),
                     [HeaderText, 'print(1)', 'barfoo = 2', 'print(foo)', ''].join('\n')
                 );
                 // Then deletion
-                concat.handleChange({
-                    document: notebookDocument.cellAt(2).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 3), new Position(0, 6)),
-                            rangeOffset: 3,
-                            rangeLength: 3,
-                            text: ''
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(2).document, 0, 3, '', 0, 6);
                 assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'bar = 2', 'print(foo)', ''].join('\n'));
 
                 // Then replace
-                concat.handleChange({
-                    document: notebookDocument.cellAt(2).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(1, 6), new Position(1, 9)),
-                            rangeOffset: 0,
-                            rangeLength: 3,
-                            text: 'bar'
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(2).document, 1, 6, 'bar', 1, 9);
                 assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'bar = 2', 'print(bar)', ''].join('\n'));
             }
         );
@@ -101,9 +108,9 @@ suite('concatTextDocument', () => {
                 [['foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 5);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument);
+                assert.strictEqual(concat.lineCount, 5);
+                assert.strictEqual(concat.languageId, 'python');
                 assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', ''].join('\n'));
             }
         );
@@ -118,13 +125,13 @@ suite('concatTextDocument', () => {
                 [['foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
+                const concat = generateConcat(notebookDocument);
                 assert.strictEqual(concat.getText(), [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', ''].join('\n'));
                 const firstCell = notebookDocument.getCells()[0];
                 const lastCell = notebookDocument.getCells()[2];
                 notebookDocument.getCells().splice(0, 1, lastCell);
                 notebookDocument.getCells().splice(2, 1, firstCell);
-                concat.handleRefresh(notebookDocument);
+                concat.handleRefresh(asRefreshEvent(notebookDocument, 'python'));
                 assert.strictEqual(concat.getText(), [HeaderText, 'foo = 2', 'print(foo)', 'print(1)', ''].join('\n'));
             }
         );
@@ -144,78 +151,66 @@ suite('concatTextDocument', () => {
                     'python',
                     ['print("bar")']
                 );
-                const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 6);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument, [inputDocument]);
+                assert.strictEqual(concat.lineCount, 6);
+                assert.strictEqual(concat.languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
                     [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', 'print("bar")', ''].join('\n')
                 );
-                assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'print(1)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'foo = 2');
-                assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'print(foo)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(5).text, 'print("bar")');
+                assert.strictEqual(concat.lineAt(2).text, 'print(1)');
+                assert.strictEqual(concat.lineAt(3).text, 'foo = 2');
+                assert.strictEqual(concat.lineAt(4).text, 'print(foo)');
+                assert.strictEqual(concat.lineAt(5).text, 'print("bar")');
 
                 assert.strictEqual(
-                    concat.notebookLocationAt(new Position(2, 0)).uri.toString(),
+                    concat.notebookLocationAt(createPosition(2, 0)).uri.toString(),
                     notebookDocument.getCells()[0].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.notebookLocationAt(new Position(3, 0)).uri.toString(),
+                    concat.notebookLocationAt(createPosition(3, 0)).uri.toString(),
                     notebookDocument.getCells()[2].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.notebookLocationAt(new Position(4, 0)).uri.toString(),
+                    concat.notebookLocationAt(createPosition(4, 0)).uri.toString(),
                     notebookDocument.getCells()[2].document.uri.toString()
                 );
                 assert.strictEqual(
-                    concat.notebookLocationAt(new Position(5, 0)).uri.toString(),
+                    concat.notebookLocationAt(createPosition(5, 0)).uri.toString(),
                     inputDocument.uri.toString()
                 );
 
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(
-                        new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 0))
-                    ),
-                    new Position(2, 0)
+                    concat.concatPositionAt(createLocationFromPosition(notebookDocument.getCells()[0], 0, 0)),
+                    createPosition(2, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(
-                        new Location(notebookDocument.getCells()[0].document.uri, new Position(0, 3))
-                    ),
-                    new Position(2, 3)
+                    concat.concatPositionAt(createLocationFromPosition(notebookDocument.getCells()[0], 0, 3)),
+                    createPosition(2, 3)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(
-                        new Location(notebookDocument.getCells()[2].document.uri, new Position(0, 0))
-                    ),
-                    new Position(3, 0)
+                    concat.concatPositionAt(createLocationFromPosition(notebookDocument.getCells()[2], 0, 0)),
+                    createPosition(3, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(
-                        new Location(notebookDocument.getCells()[2].document.uri, new Position(0, 3))
-                    ),
-                    new Position(3, 3)
+                    concat.concatPositionAt(createLocationFromPosition(notebookDocument.getCells()[2], 0, 3)),
+                    createPosition(3, 3)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(
-                        new Location(notebookDocument.getCells()[2].document.uri, new Position(1, 0))
-                    ),
-                    new Position(4, 0)
+                    concat.concatPositionAt(createLocationFromPosition(notebookDocument.getCells()[2], 1, 0)),
+                    createPosition(4, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(
-                        new Location(notebookDocument.getCells()[2].document.uri, new Position(1, 3))
-                    ),
-                    new Position(4, 3)
+                    concat.concatPositionAt(createLocationFromPosition(notebookDocument.getCells()[2], 1, 3)),
+                    createPosition(4, 3)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(new Location(inputDocument.uri, new Position(0, 0))),
-                    new Position(5, 0)
+                    concat.concatPositionAt(createLocationFromPosition(inputDocument, 0, 0)),
+                    createPosition(5, 0)
                 );
                 assert.deepStrictEqual(
-                    concat.concatPositionAt(new Location(inputDocument.uri, new Position(0, 3))),
-                    new Position(5, 3)
+                    concat.concatPositionAt(createLocationFromPosition(inputDocument, 0, 3)),
+                    createPosition(5, 3)
                 );
             }
         );
@@ -235,21 +230,24 @@ suite('concatTextDocument', () => {
                     'python',
                     ['print("bar")', 'p.']
                 );
-                const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 7);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument, [inputDocument]);
+                assert.strictEqual(concat.lineCount, 7);
+                assert.strictEqual(concat.languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
                     [HeaderText, 'print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.', ''].join('\n')
                 );
-                assert.strictEqual(concat.getConcatDocument().lineAt(0).text, 'import IPython');
-                assert.strictEqual(concat.getConcatDocument().lineAt(2).text, 'print(1)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(3).text, 'foo = 2');
-                assert.strictEqual(concat.getConcatDocument().lineAt(4).text, 'print(foo)');
-                assert.strictEqual(concat.getConcatDocument().lineAt(5).text, 'print("bar")');
-                assert.strictEqual(concat.getConcatDocument().lineAt(6).text, 'p.');
+                assert.strictEqual(concat.lineAt(0).text, 'import IPython');
+                assert.strictEqual(concat.lineAt(2).text, 'print(1)');
+                assert.strictEqual(concat.lineAt(3).text, 'foo = 2');
+                assert.strictEqual(concat.lineAt(4).text, 'print(foo)');
+                assert.strictEqual(concat.lineAt(5).text, 'print("bar")');
+                assert.strictEqual(concat.lineAt(6).text, 'p.');
 
-                assert.deepStrictEqual(concat.notebookLocationAt(new Position(6, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(
+                    concat.notebookLocationAt(createPosition(6, 2)).range,
+                    createRange(createPosition(1, 2), createPosition(1, 2))
+                );
             }
         );
     });
@@ -264,8 +262,8 @@ suite('concatTextDocument', () => {
                     'python',
                     ['print("bar")', 'p.']
                 );
-                const concat = generateWrapper(notebookDocument, [inputDocument]);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 2);
+                const concat = generateConcat(notebookDocument, [inputDocument]);
+                assert.strictEqual(concat.lineCount, 2);
                 // assert.strictEqual(concat.languageId, 'python');
                 // assert.strictEqual(concat.getText(), ['print(1)', 'foo = 2', 'print(foo)', 'print("bar")', 'p.'].join('\n'));
                 // assert.strictEqual(concat.lineAt(0).text, 'print(1)');
@@ -274,7 +272,10 @@ suite('concatTextDocument', () => {
                 // assert.strictEqual(concat.lineAt(3).text, 'print("bar")');
                 // assert.strictEqual(concat.lineAt(4).text, 'p.');
 
-                assert.deepStrictEqual(concat.notebookLocationAt(new Position(1, 2)).range, new Range(1, 2, 1, 2));
+                assert.deepStrictEqual(
+                    concat.notebookLocationAt(createPosition(1, 2)).range,
+                    createRange(createPosition(1, 2), createPosition(1, 2))
+                );
             }
         );
     });
@@ -290,9 +291,9 @@ suite('concatTextDocument', () => {
                 [['!foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 9);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument);
+                assert.strictEqual(concat.lineCount, 9);
+                assert.strictEqual(concat.languageId, 'python');
                 assert.strictEqual(
                     concat.getText(),
                     [
@@ -322,24 +323,12 @@ suite('concatTextDocument', () => {
                 [['!foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 9);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument);
+                assert.strictEqual(concat.lineCount, 9);
+                assert.strictEqual(concat.languageId, 'python');
 
                 // Try insertion
-                concat.handleChange({
-                    document: notebookDocument.cellAt(2).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 0), new Position(0, 0)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: 'bar'
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(2).document, 0, 0, 'bar');
                 assert.strictEqual(
                     concat.getText(),
                     [
@@ -356,19 +345,7 @@ suite('concatTextDocument', () => {
                 );
 
                 // Then deletion
-                concat.handleChange({
-                    document: notebookDocument.cellAt(0).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 0), new Position(0, 1)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: ''
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(0).document, 0, 0, '', 0, 1);
                 assert.strictEqual(
                     concat.getText(),
                     [
@@ -384,19 +361,7 @@ suite('concatTextDocument', () => {
                     ].join('\n')
                 );
                 // Undo deletion
-                concat.handleChange({
-                    document: notebookDocument.cellAt(0).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 0), new Position(0, 0)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: 'a'
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(0).document, 0, 0, 'a');
                 assert.strictEqual(
                     concat.getText(),
                     [
@@ -412,19 +377,7 @@ suite('concatTextDocument', () => {
                     ].join('\n')
                 );
                 // Insertion after
-                concat.handleChange({
-                    document: notebookDocument.cellAt(0).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 14), new Position(0, 14)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: '\n'
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(0).document, 0, 14, '\n');
                 assert.strictEqual(
                     concat.getText(),
                     [
@@ -441,19 +394,7 @@ suite('concatTextDocument', () => {
                     ].join('\n')
                 );
                 // Replace whole line
-                concat.handleChange({
-                    document: notebookDocument.cellAt(0).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 0), new Position(0, 14)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: 'dude'
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                applyEdit(concat, notebookDocument.cellAt(0).document, 0, 0, 'dude', 0, 14);
                 assert.strictEqual(
                     concat.getText(),
                     [
@@ -484,9 +425,8 @@ suite('concatTextDocument', () => {
                 [['!foo = 2', 'print(foo)'], 'python', NotebookCellKind.Code, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const wrapper = generateWrapper(notebookDocument);
-                const concat = wrapper.getConcatDocument() as NotebookConcatDocument;
-                const uris = wrapper.getCells();
+                const concat = generateConcat(notebookDocument);
+                const uris = concat.getCells();
                 let spans = concat.createSpans(
                     uris[0],
                     'import numpy as np\n%matplotlib widget\nimport pandas as pd\n',
@@ -541,24 +481,12 @@ suite('concatTextDocument', () => {
                 [['test'], 'markdown', NotebookCellKind.Markup, [], {}]
             ],
             (notebookDocument: NotebookDocument) => {
-                const concat = generateWrapper(notebookDocument);
-                assert.strictEqual(concat.getConcatDocument().lineCount, 3);
-                assert.strictEqual(concat.getConcatDocument().languageId, 'python');
+                const concat = generateConcat(notebookDocument);
+                assert.strictEqual(concat.lineCount, 3);
+                assert.strictEqual(concat.languageId, 'python');
 
                 // Try insertion
-                const changes = concat.handleChange({
-                    document: notebookDocument.cellAt(0).document,
-                    contentChanges: [
-                        {
-                            range: new Range(new Position(0, 8), new Position(0, 8)),
-                            rangeOffset: 0,
-                            rangeLength: 0,
-                            text: '\n  '
-                        }
-                    ],
-                    reason: undefined
-                });
-
+                const changes = applyEdit(concat, notebookDocument.cellAt(0).document, 0, 8, '\n  ');
                 assert.ok(changes, 'No changes output');
                 assert.strictEqual(changes.contentChanges.length, 1, `Content changes wrong length`);
                 assert.strictEqual(changes.contentChanges[0].text, '\n  ', `Content changes dont have correct text`);

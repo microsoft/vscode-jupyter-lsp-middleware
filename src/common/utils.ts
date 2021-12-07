@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { DocumentSelector, languages, TextDocument, Uri } from 'vscode';
+import { DocumentSelector, languages, TextDocument, Uri, NotebookDocument } from 'vscode';
+import { RefreshNotebookEvent } from './types';
 
 export const NotebookScheme = 'vscode-notebook';
 export const NotebookCellScheme = 'vscode-notebook-cell';
@@ -64,4 +65,22 @@ export function findLastIndex<T>(array: Array<T>, predicate: (e: T) => boolean) 
         }
     }
     return -1;
+}
+
+export function asRefreshEvent(notebook: NotebookDocument, selector: DocumentSelector): RefreshNotebookEvent {
+    return {
+        cells: notebook
+            .getCells()
+            .filter((c) => score(c.document, selector) > 0)
+            .map((c) => {
+                return {
+                    textDocument: {
+                        uri: c.document.uri.toString(),
+                        text: c.document.getText(),
+                        languageId: c.document.languageId,
+                        version: c.document.version
+                    }
+                };
+            })
+    };
 }

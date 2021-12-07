@@ -14,7 +14,7 @@ import {
     Command,
     CompletionContext,
     CompletionItem,
-    Declaration as VDeclaration,
+    Declaration,
     Definition,
     DefinitionLink,
     Diagnostic,
@@ -22,11 +22,13 @@ import {
     DocumentHighlight,
     DocumentLink,
     DocumentSymbol,
+    DocumentSelector,
     FoldingContext,
     FoldingRange,
     FormattingOptions,
     LinkedEditingRanges,
     Location,
+    NotebookDocument,
     Position,
     Position as VPosition,
     ProviderResult,
@@ -43,7 +45,13 @@ import {
     WorkspaceEdit
 } from 'vscode';
 import {
+    ConfigurationParams,
+    ConfigurationRequest,
+    DidCloseTextDocumentNotification,
+    DidOpenTextDocumentNotification,
+    DidOpenTextDocumentParams,
     HandleDiagnosticsSignature,
+    LanguageClient,
     Middleware,
     PrepareRenameSignature,
     ProvideCodeActionsSignature,
@@ -60,42 +68,145 @@ import {
     ProvideReferencesSignature,
     ProvideRenameEditsSignature,
     ProvideSignatureHelpSignature,
+    ProvideWorkspaceSymbolsSignature,
+    ResolveCodeLensSignature,
     ResolveCompletionItemSignature,
+    ResolveDocumentLinkSignature,
+    ResponseError
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isNotebookCell } from './common/utils';
+import { isThenable, score } from '../common/utils';
+import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
+import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
+import {
+    ProvideDocumentColorsSignature,
+    ProvideColorPresentationSignature
+} from 'vscode-languageclient/lib/common/colorProvider';
+import { ProvideFoldingRangeSignature } from 'vscode-languageclient/lib/common/foldingRange';
+import { ProvideSelectionRangeSignature } from 'vscode-languageclient/lib/common/selectionRange';
 import {
     PrepareCallHierarchySignature,
     CallHierarchyIncomingCallsSignature,
     CallHierarchyOutgoingCallsSignature
 } from 'vscode-languageclient/lib/common/callHierarchy';
 import {
-    ProvideDocumentColorsSignature,
-    ProvideColorPresentationSignature
-} from 'vscode-languageclient/lib/common/colorProvider';
-import { ProvideFoldingRangeSignature } from 'vscode-languageclient/lib/common/foldingRange';
-import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
-import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
-import { ProvideSelectionRangeSignature } from 'vscode-languageclient/lib/common/selectionRange';
-import {
-    DocumentSemanticsTokensSignature,
+    DocumentRangeSemanticTokensSignature,
     DocumentSemanticsTokensEditsSignature,
-    DocumentRangeSemanticTokensSignature
+    DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
-import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
+import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
+import { RefreshNotebookEvent } from '../protocol-only/types';
 
 /**
- * This class is used to hide all intellisense requests for notebook cells.
+ * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
+ *
+ * It is responsible for sending requests to pylance if they are allowed.
  */
-export class HidingMiddlewareAddon implements Middleware, Disposable {
-    constructor() {
+export class PylanceMiddlewareAddon implements Middleware, Disposable {
+    constructor(
+        private readonly getClient: () => LanguageClient | undefined,
+        private readonly selector: string | DocumentSelector,
+        private readonly pythonPath: string,
+        private readonly isDocumentAllowed: (uri: Uri) => boolean,
+        private readonly getNotebookHeader: (uri: Uri) => string
+    ) {
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
+        this.didOpen = this.didOpen.bind(this);
     }
+
+    public workspace = {
+        configuration: async (
+            params: ConfigurationParams,
+            token: CancellationToken,
+            next: ConfigurationRequest.HandlerSignature
+        ) => {
+            // Handle workspace/configuration requests.
+            let settings = next(params, token);
+            if (isThenable(settings)) {
+                settings = await settings;
+            }
+            if (settings instanceof ResponseError) {
+                return settings;
+            }
+
+            for (const [i, item] of params.items.entries()) {
+                if (item.section === 'python') {
+                    settings[i].pythonPath = this.pythonPath;
+                    settings[i].notebookHeader = this.getNotebookHeader(
+                        item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
+                    );
+                }
+            }
+
+            return settings;
+        }
+    };
 
     public dispose(): void {
         // Nothing to dispose at the moment
+    }
+
+    public stopWatching(notebook: NotebookDocument): void {
+        // Close all of the cells. This should cause diags and other things to be cleared
+        const client = this.getClient();
+        if (client && notebook.cellCount > 0) {
+            notebook.getCells().forEach((c) => {
+                const params = client.code2ProtocolConverter.asCloseTextDocumentParams(c.document);
+                client.sendNotification(DidCloseTextDocumentNotification.type, params);
+            });
+
+            // Set the diagnostics to nothing for all the cells
+            if (client.diagnostics) {
+                notebook.getCells().forEach((c) => {
+                    client.diagnostics?.set(c.document.uri, []);
+                });
+            }
+        }
+    }
+
+    public startWatching(notebook: NotebookDocument): void {
+        // We need to talk directly to the language client here.
+        const client = this.getClient();
+
+        // Mimic a document open for all cells
+        if (client && notebook.cellCount > 0) {
+            notebook.getCells().forEach((c) => {
+                this.didOpen(c.document, (ev) => {
+                    const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
+                    client.sendNotification(DidOpenTextDocumentNotification.type, params);
+                });
+            });
+        }
+    }
+
+    public didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
+        next(document);
+    }
+
+    public refresh(notebook: NotebookDocument) {
+        // Turn this into the custom message instead.
+        const client = this.getClient();
+        if (client) {
+            const cells: DidOpenTextDocumentParams[] = notebook
+                .getCells()
+                .filter((c) => score(c.document, this.selector))
+                .map((c) => {
+                    return {
+                        textDocument: {
+                            uri: c.document.uri.toString(),
+                            version: c.document.version,
+                            languageId: c.document.languageId,
+                            text: c.document.getText()
+                        }
+                    };
+                });
+            const params: RefreshNotebookEvent = {
+                cells
+            };
+            client.sendNotification('notebook/refresh', params);
+        }
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
@@ -106,7 +217,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideCompletionItemsSignature
     ) {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, context, token);
         }
     }
@@ -118,7 +229,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideHoverSignature
     ) {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
     }
@@ -143,7 +254,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideSignatureHelpSignature
     ): ProviderResult<SignatureHelp> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, context, token);
         }
     }
@@ -154,7 +265,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDefinitionSignature
     ): ProviderResult<Definition | DefinitionLink[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
     }
@@ -168,7 +279,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideReferencesSignature
     ): ProviderResult<Location[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, options, token);
         }
     }
@@ -179,7 +290,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentHighlightsSignature
     ): ProviderResult<DocumentHighlight[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
     }
@@ -189,9 +300,18 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentSymbolsSignature
     ): ProviderResult<SymbolInformation[] | DocumentSymbol[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, token);
         }
+    }
+
+    public provideWorkspaceSymbols(
+        query: string,
+        token: CancellationToken,
+        next: ProvideWorkspaceSymbolsSignature
+    ): ProviderResult<SymbolInformation[]> {
+        // Is this one possible to check?
+        return next(query, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -202,7 +322,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideCodeActionsSignature
     ): ProviderResult<(Command | CodeAction)[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, range, context, token);
         }
     }
@@ -213,9 +333,22 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideCodeLensesSignature
     ): ProviderResult<CodeLens[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, token);
         }
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    public resolveCodeLens(
+        codeLens: CodeLens,
+        token: CancellationToken,
+        next: ResolveCodeLensSignature
+    ): ProviderResult<CodeLens> {
+        // Range should have already been remapped.
+
+        // TODO: What if the LS needs to read the range? It won't make sense. This might mean
+        // doing this at the extension level is not possible.
+        return next(codeLens, token);
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -225,7 +358,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentFormattingEditsSignature
     ): ProviderResult<TextEdit[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, options, token);
         }
     }
@@ -238,7 +371,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentRangeFormattingEditsSignature
     ): ProviderResult<TextEdit[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, range, options, token);
         }
     }
@@ -252,7 +385,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideOnTypeFormattingEditsSignature
     ): ProviderResult<TextEdit[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, ch, options, token);
         }
     }
@@ -265,7 +398,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideRenameEditsSignature
     ): ProviderResult<WorkspaceEdit> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, newName, token);
         }
     }
@@ -283,7 +416,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
               placeholder: string;
           }
     > {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
     }
@@ -294,29 +427,30 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentLinksSignature
     ): ProviderResult<DocumentLink[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, token);
         }
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public provideDeclaration(
-        document: TextDocument,
-        position: VPosition,
+    public resolveDocumentLink(
+        link: DocumentLink,
         token: CancellationToken,
-        next: ProvideDeclarationSignature
-    ): ProviderResult<VDeclaration> {
-        if (!isNotebookCell(document.uri)) {
-            return next(document, position, token);
-        }
+        next: ResolveDocumentLinkSignature
+    ): ProviderResult<DocumentLink> {
+        // Range should have already been remapped.
+
+        // TODO: What if the LS needs to read the range? It won't make sense. This might mean
+        // doing this at the extension level is not possible.
+        return next(link, token);
     }
 
     public handleDiagnostics(uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature): void {
-        if (isNotebookCell(uri)) {
-            // Swallow all diagnostics for cells
-            next(uri, []);
+        if (this.shouldProvideIntellisense(uri)) {
+            return next(uri, diagnostics);
         } else {
-            next(uri, diagnostics);
+            // Swallow all other diagnostics
+            next(uri, []);
         }
     }
 
@@ -326,7 +460,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideTypeDefinitionSignature
     ) {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
     }
@@ -337,7 +471,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideImplementationSignature
     ): ProviderResult<Definition | DefinitionLink[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
     }
@@ -347,7 +481,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideDocumentColorsSignature
     ): ProviderResult<ColorInformation[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, token);
         }
     }
@@ -360,7 +494,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideColorPresentationSignature
     ): ProviderResult<ColorPresentation[]> {
-        if (!isNotebookCell(context.document.uri)) {
+        if (this.shouldProvideIntellisense(context.document.uri)) {
             return next(color, context, token);
         }
     }
@@ -371,8 +505,19 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideFoldingRangeSignature
     ): ProviderResult<FoldingRange[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, context, token);
+        }
+    }
+
+    public provideDeclaration(
+        document: TextDocument,
+        position: Position,
+        token: CancellationToken,
+        next: ProvideDeclarationSignature
+    ): ProviderResult<Declaration> {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            return next(document, position, token);
         }
     }
 
@@ -382,7 +527,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideSelectionRangeSignature
     ): ProviderResult<SelectionRange[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, positions, token);
         }
     }
@@ -393,7 +538,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: PrepareCallHierarchySignature
     ): ProviderResult<CallHierarchyItem | CallHierarchyItem[]> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, positions, token);
         }
     }
@@ -402,7 +547,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: CallHierarchyIncomingCallsSignature
     ): ProviderResult<CallHierarchyIncomingCall[]> {
-        if (!isNotebookCell(item.uri)) {
+        if (this.shouldProvideIntellisense(item.uri)) {
             return next(item, token);
         }
     }
@@ -411,7 +556,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: CallHierarchyOutgoingCallsSignature
     ): ProviderResult<CallHierarchyOutgoingCall[]> {
-        if (!isNotebookCell(item.uri)) {
+        if (this.shouldProvideIntellisense(item.uri)) {
             return next(item, token);
         }
     }
@@ -421,7 +566,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: DocumentSemanticsTokensSignature
     ): ProviderResult<SemanticTokens> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, token);
         }
     }
@@ -431,7 +576,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: DocumentSemanticsTokensEditsSignature
     ): ProviderResult<SemanticTokensEdits | SemanticTokens> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, previousResultId, token);
         }
     }
@@ -441,7 +586,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: DocumentRangeSemanticTokensSignature
     ): ProviderResult<SemanticTokens> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, range, token);
         }
     }
@@ -452,8 +597,13 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         token: CancellationToken,
         next: ProvideLinkedEditingRangeSignature
     ): ProviderResult<LinkedEditingRanges> {
-        if (!isNotebookCell(document.uri)) {
+        if (this.shouldProvideIntellisense(document.uri)) {
             return next(document, position, token);
         }
+    }
+
+    private shouldProvideIntellisense(uri: Uri): boolean {
+        // Make sure document is allowed
+        return this.isDocumentAllowed(uri);
     }
 }

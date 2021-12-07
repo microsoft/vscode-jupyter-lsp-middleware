@@ -8,7 +8,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
-import { IDisposable } from '../../common/types';
+import { IDisposable } from '../../protocol-only/types';
 import * as vslc from 'vscode-languageclient/node';
 import {
     ClientCapabilities,
@@ -23,10 +23,15 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware, NotebookMiddleware } from '../..';
-import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
+import {
+    createNotebookMiddleware,
+    createHidingMiddleware,
+    createPylanceMiddleware,
+    NotebookMiddleware
+} from '../../node';
+import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
-import { NotebookWrapper } from '../../notebookWrapper';
+import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 
 export interface Ctor<T> {
     new (): T;
@@ -870,7 +875,14 @@ function createMiddleware(
         case 'pylance':
             return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
         case 'notebook':
-            return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
+            return createNotebookMiddleware(
+                getClient,
+                traceInfo,
+                cellSelector,
+                pythonPath,
+                isDocumentAllowed,
+                notebookHeader
+            );
     }
 }
 
@@ -1000,11 +1012,25 @@ export async function createLanguageServer(
     }
 }
 
-export function generateWrapper(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const wrapper = new NotebookWrapper('python', `1`, () => '');
-    notebook.getCells().forEach((c) => wrapper.handleOpen(c.document));
+export function generateConcat(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
+    const concat = new NotebookConcatDocument(notebook.uri.toString(), () => '');
+    const converter = (d: vscode.TextDocument) => {
+        const result: vslc.DidOpenTextDocumentParams = {
+            textDocument: {
+                uri: d.uri.toString(),
+                languageId: d.languageId,
+                version: d.version,
+                text: d.getText()
+            }
+        };
+        return result;
+    };
+    notebook
+        .getCells()
+        .filter((c) => c.document.languageId === 'python' || c.document.uri.scheme === InteractiveInputScheme)
+        .forEach((c) => concat.handleOpen(converter(c.document)));
     if (extraCells) {
-        extraCells.forEach((c) => wrapper.handleOpen(c));
+        extraCells.forEach((c) => concat.handleOpen(converter(c)));
     }
-    return wrapper;
+    return concat;
 }
