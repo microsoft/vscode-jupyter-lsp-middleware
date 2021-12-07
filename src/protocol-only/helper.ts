@@ -3,7 +3,7 @@
 
 'use strict';
 
-import * as protocol from 'vscode-languageclient';
+import * as protocol from 'vscode-languageserver-protocol';
 
 export function createRange(start: protocol.Position, end: protocol.Position): protocol.Range {
     return {

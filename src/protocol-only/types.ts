@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import * as vscodeUri from 'vscode-uri';
-import * as protocol from 'vscode-languageclient';
+import * as protocol from 'vscode-languageserver-protocol';
 
 export interface IDisposable {
     dispose(): void | undefined;

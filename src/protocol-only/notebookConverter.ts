@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 import * as os from 'os';
 import * as vscodeUri from 'vscode-uri';
-import * as protocol from 'vscode-languageclient';
+import * as protocol from 'vscode-languageserver-protocol';
 
 import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from '../common/utils';
 import { IDisposable, ITextDocument, RefreshNotebookEvent } from './types';

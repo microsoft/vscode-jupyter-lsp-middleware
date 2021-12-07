@@ -3,7 +3,7 @@
 'use strict';
 
 import * as vscodeUri from 'vscode-uri';
-import * as protocol from 'vscode-languageclient';
+import * as protocol from 'vscode-languageserver-protocol';
 import { ITextLine } from './types';
 import { createPosition, createRange } from './helper';
 

@@ -3,7 +3,7 @@
 
 'use strict';
 import * as vscodeUri from 'vscode-uri';
-import * as protocol from 'vscode-languageclient';
+import * as protocol from 'vscode-languageserver-protocol';
 import * as path from 'path';
 import * as shajs from 'sha.js';
 import {
