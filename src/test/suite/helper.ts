@@ -32,6 +32,7 @@ import {
 import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 import { NotebookConverter } from '../../protocol-only/notebookConverter';
+import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 
 export interface Ctor<T> {
     new (): T;
@@ -1013,7 +1014,13 @@ export async function createLanguageServer(
 }
 
 export function generateConcat(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const wrapper = new NotebookConverter(() => '');
+    const uri =
+        notebook.cellCount > 0
+            ? notebook.cellAt(0).document.uri
+            : extraCells
+            ? extraCells[0].uri
+            : vscode.Uri.parse('');
+    const concat = new NotebookConcatDocument(notebook.uri.toString(), () => '');
     const converter = (d: vscode.TextDocument) => {
         const result: vslc.DidOpenTextDocumentParams = {
             textDocument: {
@@ -1025,9 +1032,12 @@ export function generateConcat(notebook: vscode.NotebookDocument, extraCells?: v
         };
         return result;
     };
-    notebook.getCells().forEach((c) => wrapper.handleOpen(converter(c.document)));
+    notebook
+        .getCells()
+        .filter((c) => c.document.languageId === 'python' || c.document.uri.scheme === InteractiveInputScheme)
+        .forEach((c) => concat.handleOpen(converter(c.document)));
     if (extraCells) {
-        extraCells.forEach((c) => wrapper.handleOpen(converter(c)));
+        extraCells.forEach((c) => concat.handleOpen(converter(c)));
     }
-    return wrapper.getConcatDocument({ uri: notebook.cellAt(0).document.uri.toString() });
+    return concat;
 }
