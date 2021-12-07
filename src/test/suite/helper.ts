@@ -8,7 +8,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
-import { IDisposable } from '../../protocol-only/types';
+import { IDisposable } from '../../common/types';
 import * as vslc from 'vscode-languageclient/node';
 import {
     ClientCapabilities,
@@ -24,7 +24,7 @@ import {
     StaticFeature
 } from 'vscode-languageclient/node';
 import { createNotebookMiddleware, createHidingMiddleware, createPylanceMiddleware, NotebookMiddleware } from '../..';
-import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
+import { FileBasedCancellationStrategy } from '../../fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 import { NotebookWrapper } from '../../notebookWrapper';
 
@@ -870,14 +870,7 @@ function createMiddleware(
         case 'pylance':
             return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
         case 'notebook':
-            return createNotebookMiddleware(
-                getClient,
-                traceInfo,
-                cellSelector,
-                pythonPath,
-                isDocumentAllowed,
-                notebookHeader
-            );
+            return createNotebookMiddleware(getClient, traceInfo, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
     }
 }
 

@@ -2,25 +2,17 @@
 // Licensed under the MIT License.
 'use strict';
 
-import * as vscodeUri from 'vscode-uri';
-import * as protocol from 'vscode-languageclient';
-import { ITextLine } from './types';
-import { createPosition, createRange } from './helper';
+import * as vscode from 'vscode';
 
-export class NotebookConcatLine implements ITextLine {
-    private _range: protocol.Range;
-    private _rangeWithLineBreak: protocol.Range;
+export class NotebookConcatLine implements vscode.TextLine {
+    private _range: vscode.Range;
+    private _rangeWithLineBreak: vscode.Range;
     private _firstNonWhitespaceIndex: number | undefined;
     private _isEmpty: boolean | undefined;
 
-    constructor(
-        public cellUri: vscodeUri.URI,
-        private _contents: string,
-        private _line: number,
-        private _offset: number
-    ) {
-        this._range = createRange(createPosition(_line, 0), createPosition(_line, _contents.length));
-        this._rangeWithLineBreak = createRange(this.range.start, createPosition(_line, _contents.length + 1));
+    constructor(public cellUri: vscode.Uri, private _contents: string, private _line: number, private _offset: number) {
+        this._range = new vscode.Range(new vscode.Position(_line, 0), new vscode.Position(_line, _contents.length));
+        this._rangeWithLineBreak = new vscode.Range(this.range.start, new vscode.Position(_line, _contents.length + 1));
     }
     public get offset(): number {
         return this._offset;
@@ -34,10 +26,10 @@ export class NotebookConcatLine implements ITextLine {
     public get text(): string {
         return this._contents;
     }
-    public get range(): protocol.Range {
+    public get range(): vscode.Range {
         return this._range;
     }
-    public get rangeIncludingLineBreak(): protocol.Range {
+    public get rangeIncludingLineBreak(): vscode.Range {
         return this._rangeWithLineBreak;
     }
     public get firstNonWhitespaceCharacterIndex(): number {

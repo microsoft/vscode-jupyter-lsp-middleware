@@ -76,7 +76,7 @@ import {
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isThenable, score } from '../common/utils';
+import { isThenable, score } from './common/utils';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
 import {
@@ -96,7 +96,7 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
-import { RefreshNotebookEvent } from '../protocol-only/types';
+import { RefreshNotebookEvent } from './common/types';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.

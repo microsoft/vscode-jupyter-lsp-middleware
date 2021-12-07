@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 'use strict';
-import * as vscodeUri from 'vscode-uri';
-import * as protocol from 'vscode-languageclient';
+import * as vscode from 'vscode';
+import * as protocol from 'vscode-languageclient/node';
 import * as path from 'path';
 import * as shajs from 'sha.js';
 import {
@@ -13,19 +13,18 @@ import {
     isInteractiveCell,
     PYTHON_LANGUAGE,
     splitLines
-} from '../common/utils';
+} from './common/utils';
 import {
     DefaultWordPattern,
     ensureValidWordDefinition,
     getWordAtText,
     regExpLeadsToEndlessLoop
-} from '../common/wordHelper';
+} from './common/wordHelper';
 import { NotebookConcatLine } from './notebookConcatLine';
-import { ITextDocument, ITextLine, RefreshNotebookEvent } from './types';
-import { createPosition, createRange } from './helper';
+import { RefreshNotebookEvent } from './common/types';
 
 type NotebookSpan = {
-    uri: vscodeUri.URI;
+    uri: vscode.Uri;
     fragment: number;
     inRealCell: boolean;
     startOffset: number;
@@ -43,8 +42,8 @@ const TypeIgnoreTransforms = [{ regex: /(^\s*%.*)/ }, { regex: /(^\s*!.*)/ }, { 
 
 const NotebookConcatPrefix = '_NotebookConcat_';
 
-export class NotebookConcatDocument implements ITextDocument {
-    public get uri(): vscodeUri.URI {
+export class NotebookConcatDocument implements vscode.TextDocument, vscode.Disposable {
+    public get uri(): vscode.Uri {
         return this.concatUri;
     }
     public get fileName(): string {
@@ -65,61 +64,57 @@ export class NotebookConcatDocument implements ITextDocument {
     public get isClosed(): boolean {
         return this._closed;
     }
-    public get isOpen() {
-        return !this.isClosed;
-    }
-    public get eol(): number {
-        return 1;
-    }
-    public get notebook(): any {
-        return undefined;
+    public get eol(): vscode.EndOfLine {
+        return vscode.EndOfLine.LF;
     }
     public get lineCount(): number {
         return this._lines.length;
     }
-    public get concatUri(): vscodeUri.URI {
-        return this._concatUri || vscodeUri.URI.parse('');
+    public get notebook(): vscode.NotebookDocument | undefined {
+        // This represents a python file, so notebook should be undefined
+        return undefined;
     }
-    public get notebookUri(): vscodeUri.URI {
-        return this._notebookUri || vscodeUri.URI.parse('');
+    public get concatUri(): vscode.Uri {
+        return this._concatUri || vscode.Uri.parse('');
+    }
+    public get notebookUri(): vscode.Uri {
+        return this._notebookUri || vscode.Uri.parse('');
     }
 
     private _interactiveWindow = false;
-    private _concatUri: vscodeUri.URI | undefined;
-    private _notebookUri: vscodeUri.URI | undefined;
+    private _concatUri: vscode.Uri | undefined;
+    private _notebookUri: vscode.Uri | undefined;
     private _version = 1;
     private _closed = true;
     private _spans: NotebookSpan[] = [];
     private _lines: NotebookConcatLine[] = [];
     private _realLines: NotebookConcatLine[] = [];
 
-    constructor(public key: string, private readonly getNotebookHeader: (uri: vscodeUri.URI) => string) {}
+    constructor(private readonly getNotebookHeader: (uri: vscode.Uri) => string) {}
 
     // Handles changes in the real cells and maps them to changes in the concat document.
     // This log expression is useful for debugging
     // >>> Changes from edit {JSON.stringify(edit)} and {JSON.stringify(oldText)} to {JSON.stringify(newText)} with diff {JSON.stringify(diff)} and changes {JSON.stringify(changes)}
-    public handleChange(e: protocol.DidChangeTextDocumentParams): protocol.DidChangeTextDocumentParams | undefined {
+    public handleChange(e: protocol.TextDocumentEdit): protocol.DidChangeTextDocumentParams | undefined {
         this._version++;
         const changes: protocol.TextDocumentContentChangeEvent[] = [];
         const index = this._spans.findIndex((c) => c.uri.toString() === e.textDocument.uri);
         if (index >= 0) {
-            e.contentChanges.forEach((edit) => {
+            e.edits.forEach((edit) => {
                 try {
                     // Get old text for diffing
                     const oldSpans = this._spans.filter((s) => s.uri.toString() === e.textDocument.uri);
                     const oldCellLines = this._lines.filter((l) => l.cellUri.toString() === e.textDocument.uri);
 
                     // Apply the edit to the real spans
-                    const editText = edit.text.replace(/\r/g, '');
-                    const editRange =
-                        'range' in edit ? edit.range : createRange(createPosition(0, 0), createPosition(0, 0));
+                    const editText = edit.newText.replace(/\r/g, '');
                     const realText = this.getRealText(oldSpans[0].uri);
                     const realCellLines = this._realLines.filter((r) => r.cellUri.toString() === e.textDocument.uri);
                     const firstLineOffset = realCellLines[0].offset;
                     const startOffset =
-                        realCellLines[editRange.start.line].offset + editRange.start.character - firstLineOffset;
+                        realCellLines[edit.range.start.line].offset + edit.range.start.character - firstLineOffset;
                     const endOffset =
-                        realCellLines[editRange.end.line].offset + editRange.end.character - firstLineOffset;
+                        realCellLines[edit.range.end.line].offset + edit.range.end.character - firstLineOffset;
                     const editedText = `${realText.slice(0, startOffset)}${editText}${realText.slice(endOffset)}`;
 
                     // Create new spans from the edited text
@@ -148,13 +143,13 @@ export class NotebookConcatDocument implements ITextDocument {
                         const oldEndLine = oldCellLines.find((l) => oldTextEnd >= l.offset && oldTextEnd < l.endOffset);
 
                         // Characters should match because there are no 'partial' lines in this cell
-                        const fromPosition = createPosition(
-                            oldStartLine?.lineNumber || editRange.start.line,
-                            editRange.start.character
+                        const fromPosition = new vscode.Position(
+                            oldStartLine?.lineNumber || edit.range.start.line,
+                            edit.range.start.character
                         );
-                        const toPosition = createPosition(
-                            oldEndLine?.lineNumber || editRange.end.line,
-                            editRange.end.character
+                        const toPosition = new vscode.Position(
+                            oldEndLine?.lineNumber || edit.range.end.line,
+                            edit.range.end.character
                         );
 
                         changes.push({
@@ -200,25 +195,25 @@ export class NotebookConcatDocument implements ITextDocument {
     }
 
     public handleOpen(
-        e: protocol.DidOpenTextDocumentParams,
+        e: protocol.TextDocumentItem,
         forceAppend?: boolean
     ): protocol.DidChangeTextDocumentParams | undefined {
-        const cellUri = vscodeUri.URI.parse(e.textDocument.uri);
+        const cellUri = vscode.Uri.parse(e.uri);
 
         // Make sure we don't already have this cell open
-        if (this._spans.find((c) => c.uri?.toString() == e.textDocument.uri)) {
+        if (this._spans.find((c) => c.uri?.toString() == e.uri)) {
             // Can't open twice
             return undefined;
         }
 
-        this._version = Math.max(e.textDocument.version, this._version + 1);
+        this._version = Math.max(e.version, this._version + 1);
         this._closed = false;
 
         // Setup uri and such if first open
         this.initialize(cellUri);
 
         // Make sure to put a newline between this code and the next code
-        const newCode = `${e.textDocument.text.replace(/\r/g, '')}\n`;
+        const newCode = `${e.text.replace(/\r/g, '')}\n`;
 
         // Compute 'fragment' portion of URI. It's the tentative cell index
         const fragment =
@@ -239,7 +234,7 @@ export class NotebookConcatDocument implements ITextDocument {
         const fromPosition =
             insertIndex < this._spans.length && insertIndex >= 0
                 ? this._lines.find((l) => l.offset == fromOffset)!.range.start
-                : createPosition(this._lines.length, 0);
+                : new vscode.Position(this._lines.length, 0);
 
         // Create spans for the new code
         const newSpans = this.createSpans(cellUri, newCode, fromOffset, fromRealOffset);
@@ -271,12 +266,12 @@ export class NotebookConcatDocument implements ITextDocument {
         return this.toDidChangeTextDocumentParams(changes);
     }
 
-    public handleClose(e: protocol.DidCloseTextDocumentParams): protocol.DidChangeTextDocumentParams | undefined {
-        const index = this._spans.findIndex((c) => c.uri.toString() === e.textDocument.uri);
-        const lastIndex = findLastIndex(this._spans, (c) => c.uri.toString() === e.textDocument.uri);
+    public handleClose(e: protocol.TextDocumentIdentifier): protocol.DidChangeTextDocumentParams | undefined {
+        const index = this._spans.findIndex((c) => c.uri.toString() === e.uri);
+        const lastIndex = findLastIndex(this._spans, (c) => c.uri.toString() === e.uri);
 
         // Setup uri and such if a reopen.
-        this.initialize(vscodeUri.URI.parse(e.textDocument.uri));
+        this.initialize(vscode.Uri.parse(e.uri));
 
         // Ignore unless in notebook mode. For interactive, cells are still there.
         if (index >= 0 && lastIndex >= 0 && !this._interactiveWindow) {
@@ -292,7 +287,7 @@ export class NotebookConcatDocument implements ITextDocument {
             const offsetDiff = endOffset - startOffset;
 
             // Remove all spans related to this uri
-            this._spans = this._spans.filter((c) => c.uri.toString() !== e.textDocument.uri);
+            this._spans = this._spans.filter((c) => c.uri.toString() !== e.uri);
 
             // For every span after, update their offsets
             for (let i = index; i < this._spans.length; i++) {
@@ -317,7 +312,7 @@ export class NotebookConcatDocument implements ITextDocument {
                 this._closed = true;
             }
             return this.toDidChangeTextDocumentParams(changes);
-        } else if (e.textDocument.uri.includes(InteractiveInputScheme)) {
+        } else if (e.uri.includes(InteractiveInputScheme)) {
             // Interactive window is actually closing.
             this._closed = true;
             this._spans = [];
@@ -330,7 +325,7 @@ export class NotebookConcatDocument implements ITextDocument {
         // Delete all cells and start over. This should only happen for non interactive (you can't move interactive cells at the moment)
         if (!this._interactiveWindow) {
             // Track our old full range
-            const from = createPosition(0, 0);
+            const from = new vscode.Position(0, 0);
             const to = this._lines.length > 0 ? this._lines[this._lines.length - 1].rangeIncludingLineBreak.end : from;
             const oldLength = this.getEndOffset();
             const oldRealContents = this.getRealText();
@@ -346,7 +341,7 @@ export class NotebookConcatDocument implements ITextDocument {
 
                 // Just act like we opened all cells again
                 e.cells.forEach((c) => {
-                    this.handleOpen({ textDocument: c.textDocument }, true);
+                    this.handleOpen(c.textDocument, true);
                 });
 
                 // Create one big change
@@ -369,7 +364,7 @@ export class NotebookConcatDocument implements ITextDocument {
         // Do nothing for now.
     }
 
-    public contains(cellUri: vscodeUri.URI | string) {
+    public contains(cellUri: vscode.Uri) {
         return this._spans.find((c) => c.uri.toString() === cellUri.toString()) !== undefined;
     }
 
@@ -377,7 +372,7 @@ export class NotebookConcatDocument implements ITextDocument {
         return Promise.resolve(false);
     }
 
-    public lineAt(position: protocol.Position | number): ITextLine {
+    public lineAt(position: vscode.Position | number): vscode.TextLine {
         // Position should be in the concat coordinates
         if (typeof position === 'number') {
             return this._lines[position as number];
@@ -386,14 +381,14 @@ export class NotebookConcatDocument implements ITextDocument {
         }
     }
 
-    public offsetAt(_position: protocol.Position | protocol.Location): number {
+    public offsetAt(_position: vscode.Position | vscode.Location): number {
         throw new Error('offsetAt should not be used on concat document. Use a more specific offset computation');
     }
 
-    public positionAt(_offsetOrPosition: number | protocol.Position | protocol.Location): protocol.Position {
+    public positionAt(_offsetOrPosition: number | vscode.Position | vscode.Location): vscode.Position {
         throw new Error('positionAt should not be used on concat document. Use a more specific position computation');
     }
-    public getText(range?: protocol.Range | undefined): string {
+    public getText(range?: vscode.Range | undefined): string {
         // Range should be from the concat document
         const contents = this.getContents();
         if (!range) {
@@ -405,7 +400,7 @@ export class NotebookConcatDocument implements ITextDocument {
         }
     }
 
-    public concatPositionAt(location: protocol.Location): protocol.Position {
+    public concatPositionAt(location: vscode.Location): vscode.Position {
         // Find first real line of the cell (start line needs to be added to this)
         const firstRealLine = this._realLines.find((r) => r.cellUri.toString() === location.uri.toString());
 
@@ -419,13 +414,13 @@ export class NotebookConcatDocument implements ITextDocument {
             // Find the concat line that has this offset
             const concatLine = this._lines.find((l) => outgoingOffset >= l.offset && outgoingOffset < l.endOffset);
             if (concatLine) {
-                return createPosition(concatLine.lineNumber, outgoingOffset - concatLine.offset);
+                return new vscode.Position(concatLine.lineNumber, outgoingOffset - concatLine.offset);
             }
         }
-        return createPosition(0, 0);
+        return new vscode.Position(0, 0);
     }
 
-    public concatOffsetAt(location: protocol.Location): number {
+    public concatOffsetAt(location: vscode.Location): number {
         // Location is inside of a cell
         const firstRealLine = this._realLines.find((r) => r.cellUri.toString() === location.uri.toString());
         if (firstRealLine) {
@@ -438,16 +433,16 @@ export class NotebookConcatDocument implements ITextDocument {
         return 0;
     }
 
-    public concatRangeOf(cellUri: vscodeUri.URI) {
+    public concatRangeOf(cellUri: vscode.Uri) {
         const cellLines = this._lines.filter((l) => l.cellUri.toString() === cellUri.toString());
         const firstLine = cellLines[0];
         const lastLine = cellLines[cellLines.length - 1];
         if (firstLine && lastLine) {
-            return createRange(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
+            return new vscode.Range(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
         }
-        return createRange(createPosition(0, 0), createPosition(0, 0));
+        return new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
     }
-    public realRangeOf(cellUri: vscodeUri.URI) {
+    public realRangeOf(cellUri: vscode.Uri) {
         // Get all the real spans
         const realSpans = this._spans.filter((s) => s.uri.toString() == cellUri.toString() && s.inRealCell);
         const startOffset = realSpans[0].startOffset || 0;
@@ -457,17 +452,20 @@ export class NotebookConcatDocument implements ITextDocument {
         const firstLine = this._lines.find((l) => startOffset >= l.offset && startOffset < l.endOffset);
         const lastLine = this._lines.find((l) => endOffset >= l.offset && endOffset <= l.endOffset);
         if (firstLine && lastLine) {
-            return createRange(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
+            return new vscode.Range(firstLine.range.start, lastLine.rangeIncludingLineBreak.end);
         }
-        return createRange(createPosition(0, 0), createPosition(0, 0));
+        return new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
     }
-    public getCells(): vscodeUri.URI[] {
+    public getCells(): vscode.Uri[] {
         return [...new Set(this._spans.map((c) => c.uri))];
     }
 
-    public notebookLocationAt(positionOrRange: protocol.Range | protocol.Position): protocol.Location {
+    public notebookLocationAt(positionOrRange: vscode.Range | vscode.Position): vscode.Location {
         // positionOrRange should be in concat ranges
-        const range = 'line' in positionOrRange ? createRange(positionOrRange, positionOrRange) : positionOrRange;
+        const range =
+            positionOrRange instanceof vscode.Position
+                ? new vscode.Range(positionOrRange, positionOrRange)
+                : positionOrRange;
 
         // Get the start and end line
         let startLine: NotebookConcatLine | undefined = this._lines[range.start.line];
@@ -493,9 +491,11 @@ export class NotebookConcatDocument implements ITextDocument {
             startLine = this._lines.find((l) => startOffset >= l.offset && startOffset < l.endOffset);
             if (startLine) {
                 return {
-                    uri: startLine.cellUri.toString(),
-                    range: createRange(
-                        this.notebookPositionAt(createPosition(startLine.lineNumber, startOffset - startLine.offset)),
+                    uri: startLine.cellUri,
+                    range: new vscode.Range(
+                        this.notebookPositionAt(
+                            new vscode.Position(startLine.lineNumber, startOffset - startLine.offset)
+                        ),
                         this.notebookPositionAt(range.end)
                     )
                 };
@@ -504,12 +504,12 @@ export class NotebookConcatDocument implements ITextDocument {
 
         // Not in the real code, return an undefined URI
         return {
-            uri: '',
+            uri: vscode.Uri.parse(''),
             range
         };
     }
 
-    private notebookPositionAt(outgoingPosition: protocol.Position) {
+    private notebookPositionAt(outgoingPosition: vscode.Position) {
         // Map the concat line to the real line
         const lineOffset = this._lines[outgoingPosition.line].offset;
         const realOffset = this.mapConcatToClosestRealOffset(lineOffset);
@@ -525,10 +525,10 @@ export class NotebookConcatDocument implements ITextDocument {
         const charOffset = this.mapConcatToClosestRealOffset(lineOffset + outgoingPosition.character);
         const startChar = charOffset - (realLine?.offset || 0);
 
-        return createPosition(startLine, startChar);
+        return new vscode.Position(startLine, startChar);
     }
 
-    public notebookOffsetAt(cellUri: vscodeUri.URI, concatOffset: number) {
+    public notebookOffsetAt(cellUri: vscode.Uri, concatOffset: number) {
         // Convert the offset to the real offset
         const realOffset = this.mapConcatToClosestRealOffset(concatOffset);
 
@@ -539,10 +539,7 @@ export class NotebookConcatDocument implements ITextDocument {
         return span ? realOffset - span.realOffset : realOffset;
     }
 
-    public getWordRangeAtPosition(
-        position: protocol.Position,
-        regexp?: RegExp | undefined
-    ): protocol.Range | undefined {
+    public getWordRangeAtPosition(position: vscode.Position, regexp?: RegExp | undefined): vscode.Range | undefined {
         if (!regexp) {
             // use default when custom-regexp isn't provided
             regexp = DefaultWordPattern;
@@ -562,17 +559,14 @@ export class NotebookConcatDocument implements ITextDocument {
         );
 
         if (wordAtText) {
-            return createRange(
-                createPosition(position.line, wordAtText.startColumn - 1),
-                createPosition(position.line, wordAtText.endColumn - 1)
-            );
+            return new vscode.Range(position.line, wordAtText.startColumn - 1, position.line, wordAtText.endColumn - 1);
         }
         return undefined;
     }
-    public validateRange(range: protocol.Range): protocol.Range {
+    public validateRange(range: vscode.Range): vscode.Range {
         return range;
     }
-    public validatePosition(position: protocol.Position): protocol.Position {
+    public validatePosition(position: vscode.Position): vscode.Position {
         return position;
     }
 
@@ -640,7 +634,7 @@ export class NotebookConcatDocument implements ITextDocument {
     }
 
     private createSpan(
-        cellUri: vscodeUri.URI,
+        cellUri: vscode.Uri,
         text: string,
         realText: string,
         offset: number,
@@ -662,7 +656,7 @@ export class NotebookConcatDocument implements ITextDocument {
         };
     }
 
-    private createTypeIgnoreSpan(cellUri: vscodeUri.URI, offset: number, realOffset: number): NotebookSpan {
+    private createTypeIgnoreSpan(cellUri: vscode.Uri, offset: number, realOffset: number): NotebookSpan {
         // Compute fragment based on cell uri
         const fragment =
             cellUri.scheme === InteractiveInputScheme ? -1 : parseInt(cellUri.fragment.substring(2) || '0');
@@ -679,7 +673,7 @@ export class NotebookConcatDocument implements ITextDocument {
         };
     }
 
-    private createHeaderSpans(cellUri: vscodeUri.URI): NotebookSpan[] {
+    private createHeaderSpans(cellUri: vscode.Uri): NotebookSpan[] {
         let extraHeader = this.getNotebookHeader(cellUri);
 
         if (extraHeader.length) {
@@ -718,7 +712,7 @@ export class NotebookConcatDocument implements ITextDocument {
     }
 
     // Public for unit testing
-    public createSpans(cellUri: vscodeUri.URI, text: string, offset: number, realOffset: number): NotebookSpan[] {
+    public createSpans(cellUri: vscode.Uri, text: string, offset: number, realOffset: number): NotebookSpan[] {
         // Go through each line, gathering up spans
         const lines = splitLines(text);
         let spans: NotebookSpan[] = [];
@@ -785,7 +779,7 @@ export class NotebookConcatDocument implements ITextDocument {
         return spans;
     }
 
-    private getRealText(cellUri?: vscodeUri.URI): string {
+    private getRealText(cellUri?: vscode.Uri): string {
         if (cellUri) {
             return this._spans
                 .filter((s) => s.inRealCell && s.uri.toString() === cellUri.toString())
@@ -798,7 +792,7 @@ export class NotebookConcatDocument implements ITextDocument {
             .join('');
     }
 
-    private createTextLines(uri: vscodeUri.URI, cell: string, prev: NotebookConcatLine | undefined) {
+    private createTextLines(uri: vscode.Uri, cell: string, prev: NotebookConcatLine | undefined) {
         const split = splitLines(cell);
         return split.map((s) => {
             const nextLine = this.createTextLine(uri, s, prev);
@@ -807,7 +801,7 @@ export class NotebookConcatDocument implements ITextDocument {
         });
     }
 
-    private computeLinesUsingFunc(uris: vscodeUri.URI[], func: (span: NotebookSpan) => string): NotebookConcatLine[] {
+    private computeLinesUsingFunc(uris: vscode.Uri[], func: (span: NotebookSpan) => string): NotebookConcatLine[] {
         const results: NotebookConcatLine[] = [];
         let prevLine: NotebookConcatLine | undefined;
         uris.forEach((uri) => {
@@ -829,7 +823,7 @@ export class NotebookConcatDocument implements ITextDocument {
     }
 
     private createTextLine(
-        cellUri: vscodeUri.URI,
+        cellUri: vscode.Uri,
         contents: string,
         prevLine: NotebookConcatLine | undefined
     ): NotebookConcatLine {
@@ -849,7 +843,7 @@ export class NotebookConcatDocument implements ITextDocument {
         return this._spans.length > 0 ? this._spans[this._spans.length - 1].realEndOffset : 0;
     }
 
-    private createSerializableRange(start: protocol.Position, end: protocol.Position): protocol.Range {
+    private createSerializableRange(start: vscode.Position, end: vscode.Position): vscode.Range {
         // This funciton is necessary so that the Range can be passed back
         // over a remote connection without including all of the extra fields that
         // VS code puts into a Range object.
@@ -863,7 +857,7 @@ export class NotebookConcatDocument implements ITextDocument {
                 character: end.character
             }
         };
-        return result as protocol.Range;
+        return result as vscode.Range;
     }
 
     private computeInsertionIndex(fragment: number): number {
@@ -876,7 +870,7 @@ export class NotebookConcatDocument implements ITextDocument {
         return index < 0 ? totalLength : index;
     }
 
-    private initialize(cellUri: vscodeUri.URI) {
+    private initialize(cellUri: vscode.Uri) {
         if (!this._concatUri?.fsPath) {
             this._interactiveWindow = isInteractiveCell(cellUri);
             const dir = path.dirname(cellUri.fsPath);
@@ -886,12 +880,12 @@ export class NotebookConcatDocument implements ITextDocument {
                 dir,
                 `${NotebookConcatPrefix}${shajs('sha1').update(cellUri.fsPath).digest('hex').substring(0, 12)}.py`
             );
-            this._concatUri = vscodeUri.URI.file(concatFilePath);
+            this._concatUri = vscode.Uri.file(concatFilePath);
             this._notebookUri = this._interactiveWindow
                 ? cellUri.with({ scheme: InteractiveScheme, path: cellUri.fsPath, fragment: '' })
                 : cellUri.fragment.includes('untitled')
                 ? cellUri.with({ scheme: 'untitled', path: cellUri.fsPath, fragment: '', query: '' }) // Special case for untitled files. File path is too long
-                : vscodeUri.URI.file(cellUri.fsPath);
+                : vscode.Uri.file(cellUri.fsPath);
         }
     }
 }
