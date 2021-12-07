@@ -251,7 +251,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public provideCompletionItem(
+    public async provideCompletionItem(
         document: vscode.TextDocument,
         position: vscode.Position,
         context: vscode.CompletionContext,
@@ -259,35 +259,42 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         _next: protocol.ProvideCompletionItemsSignature
     ) {
         const client = this.getClient();
-
         if (this.shouldProvideIntellisense(document.uri) && client) {
             const documentId = this.asTextDocumentIdentifier(document);
             const newDoc = this.converter.toConcatDocument(documentId);
             const newPos = this.converter.toConcatPosition(documentId, position);
+            const convertedParams = client.code2ProtocolConverter.asCompletionParams(document, position, context);
             const params: protocol.CompletionParams = {
                 textDocument: newDoc,
                 position: newPos,
-                context: {
-                    triggerKind: this.asCompletionTriggerKind(context.triggerKind),
-                    triggerCharacter: context.triggerCharacter
-                }
+                context: convertedParams.context
             };
-            const result = client.sendRequest(protocolNode.CompletionRequest.type, params, token);
-            if (isThenable(result)) {
-                return result.then(client.protocol2CodeConverter.asCompletionResult);
-            }
-            return client.protocol2CodeConverter.asCompletionResult(result);
+            const result = await client.sendRequest(protocolNode.CompletionRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookCompletions(documentId, result);
+            return client.protocol2CodeConverter.asCompletionResult(notebookResults);
         }
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public provideHover(
+    public async provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        next: protocol.ProvideHoverSignature
+        _next: protocol.ProvideHoverSignature
     ) {
-        return this.callNext(document, position, token, next, this.convertHovers.bind(this, document));
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.HoverParams = {
+                textDocument: newDoc,
+                position: newPos
+            };
+            const result = await client.sendRequest(protocolNode.HoverRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookHover(documentId, result);
+            return client.protocol2CodeConverter.asHover(notebookResults);
+        }
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -303,30 +310,48 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         return next(item, token);
     }
 
-    public provideSignatureHelp(
+    public async provideSignatureHelp(
         document: vscode.TextDocument,
         position: vscode.Position,
         context: vscode.SignatureHelpContext,
         token: vscode.CancellationToken,
-        next: protocol.ProvideSignatureHelpSignature
-    ): vscode.ProviderResult<vscode.SignatureHelp> {
-        return this.callNextWithArg(
-            document,
-            position,
-            token,
-            context,
-            next,
-            (r) => r // No conversion after coming back
-        );
+        _next: protocol.ProvideSignatureHelpSignature
+    ) {
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const convertedParams = client.code2ProtocolConverter.asSignatureHelpParams(document, position, context);
+            const params: protocol.SignatureHelpParams = {
+                textDocument: newDoc,
+                position: newPos,
+                context: convertedParams.context
+            };
+            const result = await client.sendRequest(protocolNode.SignatureHelpRequest.type, params, token);
+            return client.protocol2CodeConverter.asSignatureHelp(result);
+        }
     }
 
-    public provideDefinition(
+    public async provideDefinition(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        next: protocol.ProvideDefinitionSignature
+        _next: protocol.ProvideDefinitionSignature
     ) {
-        return this.callNext(document, position, token, next, this.convertLocations.bind(this, document));
+        const client = this.getClient();
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.DefinitionParams = {
+                textDocument: newDoc,
+                position: newPos
+            };
+            const result = await client.sendRequest(protocolNode.DefinitionRequest.type, params, token);
+            const notebookResults = this.converter.toNotebookLocations(result);
+            return client.protocol2CodeConverter.asDefinitionResult(notebookResults);
+        }
     }
 
     public provideReferences(
@@ -982,15 +1007,5 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         const from = this.asLocations(result);
         const to = this.converter.toNotebookLocations(from);
         return client!.protocol2CodeConverter.asDefinitionResult(to);
-    }
-    private asCompletionTriggerKind(triggerKind: vscode.CompletionTriggerKind): protocol.CompletionTriggerKind {
-        switch (triggerKind) {
-            case vscode.CompletionTriggerKind.TriggerCharacter:
-                return protocol.CompletionTriggerKind.TriggerCharacter;
-            case vscode.CompletionTriggerKind.TriggerForIncompleteCompletions:
-                return protocol.CompletionTriggerKind.TriggerForIncompleteCompletions;
-            default:
-                return protocol.CompletionTriggerKind.Invoked;
-        }
     }
 }
