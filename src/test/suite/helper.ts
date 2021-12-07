@@ -31,7 +31,6 @@ import {
 } from '../../node';
 import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
-import { NotebookConverter } from '../../protocol-only/notebookConverter';
 import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 
 export interface Ctor<T> {
@@ -1014,12 +1013,6 @@ export async function createLanguageServer(
 }
 
 export function generateConcat(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const uri =
-        notebook.cellCount > 0
-            ? notebook.cellAt(0).document.uri
-            : extraCells
-            ? extraCells[0].uri
-            : vscode.Uri.parse('');
     const concat = new NotebookConcatDocument(notebook.uri.toString(), () => '');
     const converter = (d: vscode.TextDocument) => {
         const result: vslc.DidOpenTextDocumentParams = {

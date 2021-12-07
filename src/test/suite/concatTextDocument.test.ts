@@ -7,16 +7,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as protocol from 'vscode-languageclient';
 import { generateConcat, InteractiveScheme, mockTextDocument, withTestNotebook } from './helper';
-import {
-    TextDocument,
-    NotebookCellKind,
-    NotebookDocument,
-    Position,
-    Uri,
-    Range,
-    DocumentFilter,
-    NotebookCell
-} from 'vscode';
+import { TextDocument, NotebookCellKind, NotebookDocument, Uri, DocumentFilter, NotebookCell } from 'vscode';
 import { asRefreshEvent, InteractiveInputScheme, score } from '../../common/utils';
 import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 import { createLocation, createPosition, createRange } from '../../protocol-only/helper';
