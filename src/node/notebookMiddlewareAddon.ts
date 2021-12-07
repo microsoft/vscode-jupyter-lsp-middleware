@@ -256,16 +256,28 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         position: vscode.Position,
         context: vscode.CompletionContext,
         token: vscode.CancellationToken,
-        next: protocol.ProvideCompletionItemsSignature
+        _next: protocol.ProvideCompletionItemsSignature
     ) {
-        return this.callNextWithArg(
-            document,
-            position,
-            token,
-            context,
-            next,
-            this.convertCompletions.bind(this, document)
-        );
+        const client = this.getClient();
+
+        if (this.shouldProvideIntellisense(document.uri) && client) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const params: protocol.CompletionParams = {
+                textDocument: newDoc,
+                position: newPos,
+                context: {
+                    triggerKind: this.asCompletionTriggerKind(context.triggerKind),
+                    triggerCharacter: context.triggerCharacter
+                }
+            };
+            const result = client.sendRequest(protocolNode.CompletionRequest.type, params, token);
+            if (isThenable(result)) {
+                return result.then(client.protocol2CodeConverter.asCompletionResult);
+            }
+            return client.protocol2CodeConverter.asCompletionResult(result);
+        }
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
@@ -970,5 +982,15 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         const from = this.asLocations(result);
         const to = this.converter.toNotebookLocations(from);
         return client!.protocol2CodeConverter.asDefinitionResult(to);
+    }
+    private asCompletionTriggerKind(triggerKind: vscode.CompletionTriggerKind): protocol.CompletionTriggerKind {
+        switch (triggerKind) {
+            case vscode.CompletionTriggerKind.TriggerCharacter:
+                return protocol.CompletionTriggerKind.TriggerCharacter;
+            case vscode.CompletionTriggerKind.TriggerForIncompleteCompletions:
+                return protocol.CompletionTriggerKind.TriggerForIncompleteCompletions;
+            default:
+                return protocol.CompletionTriggerKind.Invoked;
+        }
     }
 }
