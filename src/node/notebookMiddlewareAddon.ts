@@ -1,87 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import {
-    CallHierarchyIncomingCall,
-    CallHierarchyItem,
-    CallHierarchyOutgoingCall,
-    CancellationToken,
-    CodeAction,
-    CodeActionContext,
-    CodeLens,
-    Color,
-    ColorInformation,
-    ColorPresentation,
-    Command,
-    CompletionContext,
-    CompletionItem,
-    Declaration,
-    Definition,
-    DefinitionLink,
-    Diagnostic,
-    Disposable,
-    DocumentHighlight,
-    DocumentLink,
-    DocumentSelector,
-    DocumentSymbol,
-    FoldingContext,
-    FoldingRange,
-    FormattingOptions,
-    LinkedEditingRanges,
-    Location,
-    NotebookDocument,
-    Position,
-    Position as VPosition,
-    ProviderResult,
-    Range,
-    SelectionRange,
-    SemanticTokens,
-    SemanticTokensEdits,
-    SignatureHelp,
-    SignatureHelpContext,
-    SymbolInformation,
-    TextDocument,
-    TextDocumentChangeEvent,
-    TextDocumentWillSaveEvent,
-    TextEdit,
-    Uri,
-    WorkspaceEdit
-} from 'vscode';
-import {
-    ConfigurationParams,
-    ConfigurationRequest,
-    DidChangeTextDocumentNotification,
-    DidCloseTextDocumentNotification,
-    DidOpenTextDocumentNotification,
-    HandleDiagnosticsSignature,
-    LanguageClient,
-    Middleware,
-    PrepareRenameSignature,
-    ProvideCodeActionsSignature,
-    ProvideCodeLensesSignature,
-    ProvideCompletionItemsSignature,
-    ProvideDefinitionSignature,
-    ProvideDocumentFormattingEditsSignature,
-    ProvideDocumentHighlightsSignature,
-    ProvideDocumentLinksSignature,
-    ProvideDocumentRangeFormattingEditsSignature,
-    ProvideDocumentSymbolsSignature,
-    ProvideHoverSignature,
-    ProvideOnTypeFormattingEditsSignature,
-    ProvideReferencesSignature,
-    ProvideRenameEditsSignature,
-    ProvideSignatureHelpSignature,
-    ProvideWorkspaceSymbolsSignature,
-    ResolveCodeLensSignature,
-    ResolveCompletionItemSignature,
-    ResolveDocumentLinkSignature,
-    ResponseError,
-    SemanticTokensRangeParams,
-    SemanticTokensRangeRequest
-} from 'vscode-languageclient/node';
+import * as vscode from 'vscode';
+import * as protocol from 'vscode-languageclient';
+import * as protocolNode from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { isInteractiveCell, isNotebookCell, isThenable } from './common/utils';
-import { NotebookConverter } from './notebookConverter';
+import { isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
+import { NotebookConverter } from '../protocol-only/notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
 import {
@@ -101,6 +26,11 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
+import { score } from '../common/utils';
+import { RefreshNotebookEvent } from '../protocol-only/types';
+import { TextDocumentWrapper } from './textDocumentWrapper';
+import { RequestType1 } from 'vscode-languageclient';
+import { arrayDiff } from 'vscode-languageclient/lib/common/workspaceFolders';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -108,19 +38,19 @@ import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/co
  * It is responsible for generating a concatenated document of all of the cells in a notebook and using that as the
  * document for LSP requests.
  */
-export class NotebookMiddlewareAddon implements Middleware, Disposable {
+export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disposable {
     private converter: NotebookConverter;
-    private disposables: Disposable[] = [];
+    private disposables: vscode.Disposable[] = [];
 
     constructor(
-        private readonly getClient: () => LanguageClient | undefined,
+        private readonly getClient: () => protocolNode.LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
-        cellSelector: string | DocumentSelector,
+        private cellSelector: string | vscode.DocumentSelector,
         private readonly pythonPath: string,
-        private readonly isDocumentAllowed: (uri: Uri) => boolean,
-        getNotebookHeader: (uri: Uri) => string
+        private readonly isDocumentAllowed: (uri: vscode.Uri) => boolean,
+        getNotebookHeader: (uri: vscode.Uri) => string
     ) {
-        this.converter = new NotebookConverter(cellSelector, getNotebookHeader);
+        this.converter = new NotebookConverter(getNotebookHeader);
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
@@ -134,16 +64,16 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
     public workspace = {
         configuration: async (
-            params: ConfigurationParams,
-            token: CancellationToken,
-            next: ConfigurationRequest.HandlerSignature
+            params: protocol.ConfigurationParams,
+            token: vscode.CancellationToken,
+            next: protocol.ConfigurationRequest.HandlerSignature
         ) => {
             // Handle workspace/configuration requests.
             let settings = next(params, token);
             if (isThenable(settings)) {
                 settings = await settings;
             }
-            if (settings instanceof ResponseError) {
+            if (settings instanceof protocol.ResponseError) {
                 return settings;
             }
 
@@ -163,30 +93,34 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         this.converter.dispose();
     }
 
-    public refresh(notebook: NotebookDocument) {
+    public refresh(notebook: vscode.NotebookDocument) {
         const client = this.getClient();
 
         // Turn this into a change notification
         if (client && notebook.cellCount > 0) {
+            const documentItem = this.asTextDocumentIdentifier(notebook.cellAt(0).document);
             // Make sure still open.
-            const isOpen = this.converter.isOpen(notebook.cellAt(0).document);
+            const isOpen = this.converter.isOpen(documentItem);
             if (isOpen) {
                 // Send this to our converter and then the change notification to the server
-                const params = this.converter.handleRefresh(notebook);
+                const params = this.converter.handleRefresh(this.asRefreshEvent(notebook));
                 if (params) {
-                    client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                    client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
                 }
             }
         }
     }
 
-    public stopWatching(notebook: NotebookDocument): void {
+    public stopWatching(notebook: vscode.NotebookDocument): void {
         // Just close the document. This should cause diags and other things to be cleared
         const client = this.getClient();
         if (client && notebook.cellCount > 0) {
-            const outgoing = this.converter.toConcatDocument(notebook.cellAt(0).document);
-            const params = client.code2ProtocolConverter.asCloseTextDocumentParams(outgoing);
-            client.sendNotification(DidCloseTextDocumentNotification.type, params);
+            const documentItem = this.asTextDocumentIdentifier(notebook.cellAt(0).document);
+            const outgoing = this.converter.toConcatDocument(documentItem);
+            const params: protocol.DidCloseTextDocumentParams = {
+                textDocument: outgoing
+            };
+            client.sendNotification(protocol.DidCloseTextDocumentNotification.type, params);
 
             // Set the diagnostics to nothing for all the cells
             if (client.diagnostics) {
@@ -197,12 +131,12 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
 
             // Remove from tracking by the converter
             notebook.getCells().forEach((c) => {
-                this.converter.handleClose(c.document);
+                this.converter.handleClose({ textDocument: { uri: c.document.uri.toString() } });
             });
         }
     }
 
-    public startWatching(notebook: NotebookDocument): void {
+    public startWatching(notebook: vscode.NotebookDocument): void {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
@@ -211,47 +145,57 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
             notebook.getCells().forEach((c) => {
                 this.didOpen(c.document, (ev) => {
                     const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
-                    client.sendNotification(DidOpenTextDocumentNotification.type, params);
+                    client.sendNotification(protocol.DidOpenTextDocumentNotification.type, params);
                 });
             });
         }
     }
 
-    public didChange(event: TextDocumentChangeEvent): void {
+    public didChange(event: vscode.TextDocumentChangeEvent): void {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document event
-        if (isNotebookCell(event.document.uri) && client) {
-            const sentOpen = this.converter.isOpen(event.document);
-            const params = this.converter.handleChange(event);
+        if (isNotebookCell(event.document.uri) && client && score(event.document, this.cellSelector)) {
+            const documentItem = this.asTextDocumentIdentifier(event.document);
+            const sentOpen = this.converter.isOpen(documentItem);
+            const params = this.converter.handleChange(client.code2ProtocolConverter.asChangeTextDocumentParams(event));
             if (!sentOpen) {
                 // First time opening, send an open instead
-                const newDoc = this.converter.toConcatDocument(event.document);
-                const params = client.code2ProtocolConverter.asOpenTextDocumentParams(newDoc);
-                client.sendNotification(DidOpenTextDocumentNotification.type, params);
+                const newDoc = this.converter.toConcatDocument(documentItem);
+                const params: protocol.DidOpenTextDocumentParams = {
+                    textDocument: newDoc
+                };
+                client.sendNotification(protocol.DidOpenTextDocumentNotification.type, params);
             } else if (params) {
-                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
             }
         }
     }
 
-    public didOpen(document: TextDocument, next: (ev: TextDocument) => void): () => void {
+    public didOpen(document: vscode.TextDocument, _next: (ev: vscode.TextDocument) => void): () => void {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri) && this.isDocumentAllowed(document.uri) && client) {
-            const sentOpen = this.converter.isOpen(document);
-            const params = this.converter.handleOpen(document);
+        if (
+            isNotebookCell(document.uri) &&
+            this.isDocumentAllowed(document.uri) &&
+            client &&
+            score(document, this.cellSelector)
+        ) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const documentItem = this.asTextDocumentItem(document);
+            const sentOpen = this.converter.isOpen(documentId);
+            const params = this.converter.handleOpen({ textDocument: documentItem });
 
             // If first time opening, just send the initial doc
             if (!sentOpen) {
-                const newDoc = this.converter.toConcatDocument(document);
-                next(newDoc);
+                const newDoc = this.converter.toConcatDocument(documentId);
+                client.sendNotification(protocol.DidOpenTextDocumentNotification.type, { textDocument: newDoc });
             } else if (params) {
                 // Otherwise send a change event
-                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
             }
         }
 
@@ -260,23 +204,24 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         };
     }
 
-    public didClose(document: TextDocument, next: (ev: TextDocument) => void): () => void {
+    public didClose(document: vscode.TextDocument, _next: (ev: vscode.TextDocument) => void): () => void {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
         // If this is a notebook cell, change this into a concat document if this is the first time.
-        if (isNotebookCell(document.uri) && client) {
+        if (isNotebookCell(document.uri) && client && score(document, this.cellSelector)) {
             // Track if this is the message that closes the whole thing.
-            const wasOpen = this.converter.isOpen(document);
-            const params = this.converter.handleClose(document);
-            const isClosed = !this.converter.isOpen(document);
+            const documentItem = this.asTextDocumentItem(document);
+            const wasOpen = this.converter.isOpen(documentItem);
+            const params = this.converter.handleClose({ textDocument: documentItem });
+            const isClosed = !this.converter.isOpen(documentItem);
             if (isClosed && wasOpen) {
                 // All cells deleted, send a close notification
-                const newDoc = this.converter.toConcatDocument(document);
-                next(newDoc);
+                const newDoc = this.converter.toConcatDocument(documentItem);
+                client.sendNotification(protocol.DidCloseTextDocumentNotification.type, { textDocument: newDoc });
             } else if (!isClosed && params) {
                 // Otherwise we changed the document by deleting cells.
-                client.sendNotification(DidChangeTextDocumentNotification.type, params);
+                client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
             }
         }
         return () => {
@@ -285,66 +230,60 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public didSave(event: TextDocument, next: (ev: TextDocument) => void): void {
+    public didSave(event: vscode.TextDocument, next: (ev: vscode.TextDocument) => void): void {
         return next(event);
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public willSave(event: TextDocumentWillSaveEvent, next: (ev: TextDocumentWillSaveEvent) => void): void {
+    public willSave(
+        event: vscode.TextDocumentWillSaveEvent,
+        next: (ev: vscode.TextDocumentWillSaveEvent) => void
+    ): void {
         return next(event);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public willSaveWaitUntil(
-        event: TextDocumentWillSaveEvent,
-        next: (ev: TextDocumentWillSaveEvent) => Thenable<TextEdit[]>
-    ): Thenable<TextEdit[]> {
+        event: vscode.TextDocumentWillSaveEvent,
+        next: (ev: vscode.TextDocumentWillSaveEvent) => Thenable<vscode.TextEdit[]>
+    ): Thenable<vscode.TextEdit[]> {
         return next(event);
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public provideCompletionItem(
-        document: TextDocument,
-        position: Position,
-        context: CompletionContext,
-        token: CancellationToken,
-        next: ProvideCompletionItemsSignature
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        context: vscode.CompletionContext,
+        token: vscode.CancellationToken,
+        next: protocol.ProvideCompletionItemsSignature
     ) {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, context, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookCompletions.bind(this.converter, document));
-            }
-            return this.converter.toNotebookCompletions(document, result);
-        }
+        return this.callNextWithArg(
+            document,
+            position,
+            token,
+            context,
+            next,
+            this.convertCompletions.bind(this, document)
+        );
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public provideHover(
-        document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: ProvideHoverSignature
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        next: protocol.ProvideHoverSignature
     ) {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookHover.bind(this.converter, document));
-            }
-            return this.converter.toNotebookHover(document, result);
-        }
+        return this.callNext(document, position, token, next, this.convertHovers.bind(this, document));
     }
 
     // eslint-disable-next-line class-methods-use-this
     public resolveCompletionItem(
-        item: CompletionItem,
-        token: CancellationToken,
-        next: ResolveCompletionItemSignature
-    ): ProviderResult<CompletionItem> {
+        item: vscode.CompletionItem,
+        token: vscode.CancellationToken,
+        next: protocol.ResolveCompletionItemSignature
+    ): vscode.ProviderResult<vscode.CompletionItem> {
         // Range should have already been remapped.
 
         // TODO: What if the LS needs to read the range? It won't make sense. This might mean
@@ -353,34 +292,29 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
     }
 
     public provideSignatureHelp(
-        document: TextDocument,
-        position: Position,
-        context: SignatureHelpContext,
-        token: CancellationToken,
-        next: ProvideSignatureHelpSignature
-    ): ProviderResult<SignatureHelp> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            return next(newDoc, newPos, context, token);
-        }
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        context: vscode.SignatureHelpContext,
+        token: vscode.CancellationToken,
+        next: protocol.ProvideSignatureHelpSignature
+    ): vscode.ProviderResult<vscode.SignatureHelp> {
+        return this.callNextWithArg(
+            document,
+            position,
+            token,
+            context,
+            next,
+            (r) => r // No conversion after coming back
+        );
     }
 
     public provideDefinition(
-        document: TextDocument,
-        position: Position,
-        token: CancellationToken,
-        next: ProvideDefinitionSignature
-    ): ProviderResult<Definition | DefinitionLink[]> {
-        if (this.shouldProvideIntellisense(document.uri)) {
-            const newDoc = this.converter.toConcatDocument(document);
-            const newPos = this.converter.toConcatPosition(document, position);
-            const result = next(newDoc, newPos, token);
-            if (isThenable(result)) {
-                return result.then(this.converter.toNotebookLocations.bind(this.converter));
-            }
-            return this.converter.toNotebookLocations(result);
-        }
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        next: protocol.ProvideDefinitionSignature
+    ) {
+        return this.callNext(document, position, token, next, this.convertLocations.bind(this, document));
     }
 
     public provideReferences(
@@ -874,8 +808,167 @@ export class NotebookMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    private shouldProvideIntellisense(uri: Uri): boolean {
+    private callNext<R1>(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        next: (d: vscode.TextDocument, p: vscode.Position, t: vscode.CancellationToken) => vscode.ProviderResult<R1>,
+        converter: (result: R1 | null | undefined) => R1 | null | undefined
+    ) {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatTextDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const result = next(
+                new TextDocumentWrapper(newDoc),
+                new vscode.Position(newPos.line, newPos.character),
+                token
+            );
+            if (isThenable(result)) {
+                return result.then(converter);
+            }
+            return converter(result);
+        }
+    }
+
+    private callNextWithArg<T1, R1>(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken,
+        arg: T1,
+        next: (
+            d: vscode.TextDocument,
+            p: vscode.Position,
+            arg: T1,
+            t: vscode.CancellationToken
+        ) => vscode.ProviderResult<R1>,
+        converter: (result: R1 | null | undefined) => R1 | null | undefined
+    ) {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            const documentId = this.asTextDocumentIdentifier(document);
+            const newDoc = this.converter.toConcatTextDocument(documentId);
+            const newPos = this.converter.toConcatPosition(documentId, position);
+            const result = next(
+                new TextDocumentWrapper(newDoc),
+                new vscode.Position(newPos.line, newPos.character),
+                arg,
+                token
+            );
+            if (isThenable(result)) {
+                return result.then(converter);
+            }
+            return converter(result);
+        }
+    }
+
+    private shouldProvideIntellisense(uri: vscode.Uri): boolean {
         // Make sure document is allowed
         return this.isDocumentAllowed(uri);
+    }
+
+    private asTextDocumentIdentifier(document: vscode.TextDocument): protocol.TextDocumentIdentifier {
+        return {
+            uri: document.uri.toString()
+        };
+    }
+
+    private asTextDocumentItem(document: vscode.TextDocument): protocol.TextDocumentItem {
+        return {
+            uri: document.uri.toString(),
+            text: document.getText(),
+            languageId: document.languageId,
+            version: document.version
+        };
+    }
+
+    private asRefreshEvent(notebook: vscode.NotebookDocument): RefreshNotebookEvent {
+        return {
+            cells: notebook
+                .getCells()
+                .filter((c) => score(c.document, this.cellSelector) > 0)
+                .map((c) => {
+                    return {
+                        textDocument: this.asTextDocumentItem(c.document)
+                    };
+                })
+        };
+    }
+
+    private asCompletionItem(item: vscode.CompletionItem) {
+        const client = this.getClient();
+        return client!.code2ProtocolConverter.asCompletionItem(item);
+    }
+
+    private asCompletionList(
+        list: vscode.CompletionItem[] | vscode.CompletionList<vscode.CompletionItem> | null | undefined
+    ): protocol.CompletionList | protocol.CompletionItem[] | undefined {
+        if (!list) {
+            return undefined;
+        }
+        if (Array.isArray(list)) {
+            return list.map(this.asCompletionItem.bind(this));
+        }
+        return list.items.map(this.asCompletionItem.bind(this));
+    }
+
+    private asHover(result: vscode.Hover | null | undefined): protocol.Hover | undefined | null {
+        if (!result) {
+            return undefined;
+        }
+        return result as any; // Types should be the same if you skip deprecated values?
+    }
+
+    private asLocation(item: vscode.Location | vscode.LocationLink): protocol.Location | protocol.LocationLink {
+        const client = this.getClient();
+        if ('targetUri' in item) {
+            return {
+                targetUri: client!.code2ProtocolConverter.asUri(item.targetUri),
+                targetSelectionRange: client!.code2ProtocolConverter.asRange(item.targetSelectionRange)!,
+                targetRange: client!.code2ProtocolConverter.asRange(item.targetRange)!,
+                originSelectionRange: client!.code2ProtocolConverter.asRange(item.originSelectionRange)!
+            };
+        }
+        return client!.code2ProtocolConverter.asLocation(item);
+    }
+
+    private asLocations(
+        result: vscode.Definition | vscode.LocationLink[] | null | undefined
+    ): protocol.Definition | protocol.LocationLink[] | undefined | null {
+        if (!result) {
+            return undefined;
+        }
+        if (Array.isArray(result)) {
+            return result.map(this.asLocation.bind(this));
+        }
+        return this.asLocation(result); // Types should be the same if you skip deprecated values?
+    }
+
+    private convertCompletions(
+        document: vscode.TextDocument,
+        list: vscode.CompletionItem[] | vscode.CompletionList<vscode.CompletionItem> | null | undefined
+    ) {
+        const client = this.getClient();
+        const documentId = this.asTextDocumentIdentifier(document);
+        const from = this.asCompletionList(list);
+        const to = this.converter.toNotebookCompletions(documentId, from);
+        return client!.protocol2CodeConverter.asCompletionResult(to);
+    }
+
+    private convertHovers(document: vscode.TextDocument, result: vscode.Hover | null | undefined) {
+        const client = this.getClient();
+        const documentId = this.asTextDocumentIdentifier(document);
+        const from = this.asHover(result);
+        const to = this.converter.toNotebookHover(documentId, from);
+        return client!.protocol2CodeConverter.asHover(to);
+    }
+
+    private convertLocations(
+        _document: vscode.TextDocument,
+        result: vscode.Definition | vscode.DefinitionLink[] | null | undefined
+    ) {
+        const client = this.getClient();
+        const from = this.asLocations(result);
+        const to = this.converter.toNotebookLocations(from);
+        return client!.protocol2CodeConverter.asDefinitionResult(to);
     }
 }

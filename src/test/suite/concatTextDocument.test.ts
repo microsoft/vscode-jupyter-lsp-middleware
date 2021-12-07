@@ -8,7 +8,7 @@ import * as path from 'path';
 import { generateWrapper, InteractiveScheme, mockTextDocument, withTestNotebook } from './helper';
 import { Location, NotebookCellKind, NotebookDocument, Position, Uri, Range, DocumentFilter } from 'vscode';
 import { InteractiveInputScheme, score } from '../../common/utils';
-import { NotebookConcatDocument } from '../../notebookConcatDocument';
+import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 
 const HeaderText = 'import IPython\nIPython.get_ipython()';
 
