@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 
-const fileContents = fs.readFileSync('./dist/index.d.ts').toString().split(/\r\n|\r|\n/g);
+const fileContents = fs.readFileSync('./dist/node/index.d.ts').toString().split(/\r\n|\r|\n/g);
 let filterContents = [];
 fileContents.forEach(line => {
     if (
@@ -14,5 +14,5 @@ fileContents.forEach(line => {
     }
 });
 
-fs.writeFileSync('./dist/index.d.ts', filterContents.join('\n'));
+fs.writeFileSync('./dist/node/index.d.ts', filterContents.join('\n'));
 console.log('Optimized d.ts')
