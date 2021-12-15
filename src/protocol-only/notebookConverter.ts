@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as vscodeUri from 'vscode-uri';
 import * as protocol from 'vscode-languageserver-protocol';
 
-import { InteractiveInputScheme, InteractiveScheme, NotebookCellScheme } from '../common/utils';
+import { InteractiveInputScheme, InteractiveScheme, isNotebookCell } from '../common/utils';
 import { IDisposable, ITextDocument, RefreshNotebookEvent } from './types';
 import { NotebookConcatDocument } from './notebookConcatDocument';
 import { createLocation, createPosition, createRange } from './helper';
@@ -49,24 +49,20 @@ export class NotebookConverter implements IDisposable {
 
     public hasCell(cell: protocol.TextDocumentIdentifier): boolean {
         const concat = this.getConcatDocument(cell);
-        return concat?.contains(cell.uri) ?? false;
+        return concat.contains(cell.uri);
     }
 
     public isOpen(cell: protocol.TextDocumentIdentifier): boolean | undefined {
         const concat = this.getConcatDocument(cell);
-        if (concat) {
-            return concat.isOpen;
-        }
-        return undefined;
+        return concat.isOpen;
     }
 
     public handleOpen(ev: protocol.DidOpenTextDocumentParams) {
         const concat = this.getConcatDocument(ev.textDocument);
         const results = concat?.handleOpen(ev);
-        if (concat) {
-            // concat uri is empty until a cell is added.
-            this.activeConcatsOutgoingMap.set(NotebookConverter.getDocumentKey(concat.concatUri), concat);
-        }
+
+        // concat uri is empty until a cell is added.
+        this.activeConcatsOutgoingMap.set(NotebookConverter.getDocumentKey(concat.concatUri), concat);
         return results;
     }
 
@@ -78,26 +74,26 @@ export class NotebookConverter implements IDisposable {
 
     public handleClose(event: protocol.DidCloseTextDocumentParams) {
         const concat = this.getConcatDocument(event.textDocument.uri);
-        return concat?.handleClose(event);
+        return concat.handleClose(event);
     }
 
     public handleChange(event: protocol.DidChangeTextDocumentParams) {
         const concat = this.getConcatDocument(event.textDocument.uri);
-        return concat?.handleChange(event);
+        return concat.handleChange(event);
     }
 
     public toNotebookDiagnosticsMap(
-        uri: protocol.TextDocumentIdentifier | string,
+        concatUri: protocol.TextDocumentIdentifier | string,
         diagnostics: protocol.Diagnostic[]
     ): Map<string, protocol.Diagnostic[]> {
-        const concat = this.getConcatFromOutgoingUri(uri);
+        const concat = this.getConcatDocumentForUri(concatUri);
         const result = new Map<string, protocol.Diagnostic[]>();
 
         if (concat) {
             // Diagnostics are supposed to be per file and are updated each time
             // Make sure to clear out old ones first
             const cellUris: string[] = [];
-            const oldCellUris = this.mapOfConcatDocumentsWithCellUris.get(uri.toString()) || [];
+            const oldCellUris = this.mapOfConcatDocumentsWithCellUris.get(concatUri.toString()) || [];
             concat.getCells().forEach((uri) => {
                 result.set(uri.toString(), []);
                 cellUris.push(uri.toString());
@@ -107,7 +103,7 @@ export class NotebookConverter implements IDisposable {
             oldCellUris
                 .filter((cellUri) => !currentCellUris.has(cellUri))
                 .forEach((cellUri) => result.set(cellUri, []));
-            this.mapOfConcatDocumentsWithCellUris.set(uri.toString(), cellUris);
+            this.mapOfConcatDocumentsWithCellUris.set(concatUri.toString(), cellUris);
 
             // Then for all the new ones, set their values.
             diagnostics.forEach((d) => {
@@ -124,13 +120,13 @@ export class NotebookConverter implements IDisposable {
                     list.push(this.toNotebookDiagnostic(location.uri, d));
                 }
             });
-        } else if (this.mapOfConcatDocumentsWithCellUris.has(uri.toString())) {
-            (this.mapOfConcatDocumentsWithCellUris.get(uri.toString()) || []).forEach((cellUri) =>
+        } else if (this.mapOfConcatDocumentsWithCellUris.has(concatUri.toString())) {
+            (this.mapOfConcatDocumentsWithCellUris.get(concatUri.toString()) || []).forEach((cellUri) =>
                 result.set(cellUri, [])
             );
-            this.mapOfConcatDocumentsWithCellUris.delete(uri.toString());
+            this.mapOfConcatDocumentsWithCellUris.delete(concatUri.toString());
         } else {
-            result.set(this.toURI(uri).toString(), diagnostics);
+            result.set(this.toURI(concatUri).toString(), diagnostics);
         }
 
         return result;
@@ -181,35 +177,27 @@ export class NotebookConverter implements IDisposable {
 
     public toConcatDocument(cell: protocol.TextDocumentIdentifier): protocol.TextDocumentItem {
         const result = this.getConcatDocument(cell);
-        if (result) {
-            return {
-                text: result.getText(),
-                uri: result.uri.toString(),
-                languageId: result.languageId,
-                version: result.version
-            };
-        }
+
         return {
-            text: '',
-            uri: cell.uri,
-            languageId: 'python',
-            version: 1
+            text: result.getText(),
+            uri: result.uri.toString(),
+            languageId: result.languageId,
+            version: result.version
         };
     }
 
     public toConcatTextDocument(cell: protocol.TextDocumentIdentifier): ITextDocument {
-        const result = this.getConcatDocument(cell);
-        return result;
+        return this.getConcatDocument(cell);
     }
 
     public toConcatUri(cell: protocol.TextDocumentIdentifier | string): string {
         const result = this.getConcatDocument(cell);
-        return result ? result.concatUri.toString() : '';
+        return result.concatUri.toString();
     }
 
     public toConcatPosition(cell: protocol.TextDocumentIdentifier, position: protocol.Position): protocol.Position {
         const concat = this.getConcatDocument(cell);
-        return concat ? concat.concatPositionAt(createLocation(cell.uri, createRange(position, position))) : position;
+        return concat.concatPositionAt(createLocation(cell.uri, createRange(position, position)));
     }
 
     public toConcatPositions(cell: protocol.TextDocumentIdentifier, positions: protocol.Position[]) {
@@ -221,12 +209,10 @@ export class NotebookConverter implements IDisposable {
         cellRange: protocol.Range | undefined
     ): protocol.Range {
         const concat = this.getConcatDocument(cell);
-        if (concat) {
-            const uri = this.toURI(cell);
-            const range = concat.concatRangeOf(uri);
-            return range || cellRange || createRange(createPosition(0, 0), createPosition(0, 0));
-        }
-        return cellRange || createRange(createPosition(0, 0), createPosition(0, 0));
+
+        const uri = this.toURI(cell);
+        const range = concat.concatRangeOf(uri);
+        return range || cellRange || createRange(createPosition(0, 0), createPosition(0, 0));
     }
 
     public toRealRange(
@@ -234,12 +220,10 @@ export class NotebookConverter implements IDisposable {
         cellRange: protocol.Range | undefined
     ): protocol.Range {
         const concat = this.getConcatDocument(cell);
-        if (concat) {
-            const uri = this.toURI(cell);
-            const range = concat.realRangeOf(uri);
-            return range || cellRange || createRange(createPosition(0, 0), createPosition(0, 0));
-        }
-        return cellRange || createRange(createPosition(0, 0), createPosition(0, 0));
+
+        const uri = this.toURI(cell);
+        const range = concat.realRangeOf(uri);
+        return range || cellRange || createRange(createPosition(0, 0), createPosition(0, 0));
     }
 
     public toConcatContext(
@@ -297,7 +281,7 @@ export class NotebookConverter implements IDisposable {
             return (<any>location).map(this.toNotebookLocationOrLink.bind(this));
         }
         if (location?.range) {
-            return this.toNotebookLocationFromRange(location.uri, location.range);
+            return this.toNotebookRange(location.uri, location.range);
         }
         return location;
     }
@@ -309,10 +293,8 @@ export class NotebookConverter implements IDisposable {
         if (!highlight) {
             return undefined;
         }
+
         const concat = this.getConcatDocument(cell);
-        if (!concat) {
-            return undefined;
-        }
         const result: protocol.DocumentHighlight[] = [];
         for (let h of highlight) {
             const loc = concat.notebookLocationAt(h.range);
@@ -340,12 +322,12 @@ export class NotebookConverter implements IDisposable {
     }
 
     public toNotebookSymbolFromSymbolInformation(
-        cellUri: protocol.TextDocumentIdentifier | string,
+        cellOrConcatUri: protocol.TextDocumentIdentifier | string,
         symbol: protocol.SymbolInformation
     ): protocol.SymbolInformation {
         return {
             ...symbol,
-            location: this.toNotebookLocationFromRange(cellUri, symbol.location.range)
+            location: this.toNotebookLocationFromRange(cellOrConcatUri, symbol.location.range)
         };
     }
 
@@ -424,10 +406,10 @@ export class NotebookConverter implements IDisposable {
             if ('range' in rangeOrRename) {
                 return {
                     ...rangeOrRename,
-                    range: this.toNotebookLocationFromRange(cell, rangeOrRename.range).range
+                    range: this.toNotebookRange(cell, rangeOrRename.range)
                 };
             }
-            return this.toNotebookLocationFromRange(cell, rangeOrRename).range;
+            return this.toNotebookRange(cell, rangeOrRename);
         }
         return rangeOrRename ?? undefined;
     }
@@ -450,9 +432,19 @@ export class NotebookConverter implements IDisposable {
         return links ?? undefined;
     }
 
-    public toNotebookRange(cell: protocol.TextDocumentIdentifier | string, range: protocol.Range): protocol.Range {
+    public toNotebookRange(
+        cellOrConcatUri: protocol.TextDocumentIdentifier | string,
+        range: protocol.Range
+    ): protocol.Range {
         // This is dangerous as the URI is not remapped (location uri may be different)
-        return this.toNotebookLocationFromRange(cell, range).range;
+        const concat = this.getConcatDocumentForUri(cellOrConcatUri);
+        if (concat) {
+            const startLoc = concat.notebookLocationAt(range.start);
+            const endLoc = concat.notebookLocationAt(range.end);
+            return createRange(startLoc.range.start, endLoc.range.end);
+        }
+
+        return range;
     }
 
     public toNotebookPosition(
@@ -460,20 +452,17 @@ export class NotebookConverter implements IDisposable {
         position: protocol.Position
     ): protocol.Position {
         // This is dangerous as the URI is not remapped (location uri may be different)
-        return this.toNotebookLocationFromRange(cell, createRange(position, position)).range.start;
+        return this.toNotebookRange(cell, createRange(position, position)).start;
     }
 
     public toNotebookOffset(cell: protocol.TextDocumentIdentifier | string, offset: number): number {
         const uri = this.toURI(cell);
-        const concat = this.getConcatFromOutgoingUri(cell);
-        if (concat) {
-            return concat.notebookOffsetAt(uri, offset);
-        }
-        return offset;
+        const concat = this.getConcatDocument(cell);
+        return concat.notebookOffsetAt(uri, offset);
     }
 
-    public toNotebookUri(outgoingUri: string, range?: protocol.Range) {
-        const concat = this.getConcatFromOutgoingUri(outgoingUri);
+    public toNotebookUri(uri: string, range?: protocol.Range) {
+        const concat = this.getConcatDocumentForUri(uri);
         let result: string | undefined;
         if (concat) {
             if (range) {
@@ -483,7 +472,8 @@ export class NotebookConverter implements IDisposable {
                 result = concat.notebookUri.toString();
             }
         }
-        return result || outgoingUri;
+
+        return result || uri;
     }
 
     public toNotebookColorInformations(
@@ -709,8 +699,12 @@ export class NotebookConverter implements IDisposable {
         }
     }
 
-    private toURI(cell: protocol.TextDocumentIdentifier | string): vscodeUri.URI {
-        return typeof cell === 'string' ? vscodeUri.URI.parse(cell) : vscodeUri.URI.parse(cell.uri);
+    private toURI(input: protocol.TextDocumentIdentifier | string | vscodeUri.URI): vscodeUri.URI {
+        if (vscodeUri.URI.isUri(input)) {
+            return input;
+        }
+
+        return typeof input === 'string' ? vscodeUri.URI.parse(input) : vscodeUri.URI.parse(input.uri);
     }
 
     private toNotebookWorkspaceSymbol(symbol: protocol.SymbolInformation): protocol.SymbolInformation {
@@ -834,33 +828,24 @@ export class NotebookConverter implements IDisposable {
     }
 
     private toNotebookLocationFromLocation(location: protocol.Location): protocol.Location {
-        if (this.locationNeedsConversion(location.uri)) {
-            const uri = this.toNotebookUri(location.uri, location.range);
-
-            return {
-                uri,
-                range: this.toNotebookRange(uri, location.range)
-            };
-        }
-
-        return location;
+        const uri = this.toNotebookUri(location.uri, location.range);
+        return {
+            uri,
+            range: this.toNotebookRange(uri, location.range)
+        };
     }
 
     private toNotebookLocationLinkFromLocationLink(locationLink: protocol.LocationLink): protocol.LocationLink {
-        if (this.locationNeedsConversion(locationLink.targetUri)) {
-            const uri = this.toNotebookUri(locationLink.targetUri, locationLink.targetRange);
+        const uri = this.toNotebookUri(locationLink.targetUri, locationLink.targetRange);
 
-            return {
-                originSelectionRange: locationLink.originSelectionRange
-                    ? this.toNotebookRange(uri, locationLink.originSelectionRange)
-                    : undefined,
-                targetUri: uri,
-                targetRange: this.toNotebookRange(uri, locationLink.targetRange),
-                targetSelectionRange: this.toNotebookRange(uri, locationLink.targetSelectionRange)
-            };
-        }
-
-        return locationLink;
+        return {
+            originSelectionRange: locationLink.originSelectionRange
+                ? this.toNotebookRange(uri, locationLink.originSelectionRange)
+                : undefined,
+            targetUri: uri,
+            targetRange: this.toNotebookRange(uri, locationLink.targetRange),
+            targetSelectionRange: this.toNotebookRange(uri, locationLink.targetSelectionRange)
+        };
     }
 
     private toNotebookLocationOrLink(location: protocol.Location | protocol.LocationLink) {
@@ -870,13 +855,6 @@ export class NotebookConverter implements IDisposable {
             return this.toNotebookLocationLinkFromLocationLink(location);
         }
         return this.toNotebookLocationFromLocation(location);
-    }
-
-    // Returns true if the given location needs conversion
-    // Should be if it's in a notebook cell or if it's in a notebook concat document
-    private locationNeedsConversion(locationUri: string): boolean {
-        const uri = this.toURI(locationUri);
-        return uri.scheme === NotebookCellScheme || this.getConcatFromOutgoingUri(locationUri) !== undefined;
     }
 
     private toNotebookCompletion(
@@ -905,11 +883,10 @@ export class NotebookConverter implements IDisposable {
     }
 
     private toNotebookLocationFromRange(
-        cell: protocol.TextDocumentIdentifier | string,
+        cellOrConcatUri: protocol.TextDocumentIdentifier | string,
         range: protocol.Range
     ): protocol.Location {
-        const uri = this.toURI(cell);
-        const concat = this.getConcatDocument(cell);
+        const concat = this.getConcatDocumentForUri(cellOrConcatUri);
         if (concat) {
             const startLoc = concat.notebookLocationAt(range.start);
             const endLoc = concat.notebookLocationAt(range.end);
@@ -918,8 +895,9 @@ export class NotebookConverter implements IDisposable {
                 range: createRange(startLoc.range.start, endLoc.range.end)
             };
         }
+
         return {
-            uri: uri.toString(),
+            uri: protocol.TextDocumentIdentifier.is(cellOrConcatUri) ? cellOrConcatUri.uri : cellOrConcatUri,
             range
         };
     }
@@ -931,16 +909,24 @@ export class NotebookConverter implements IDisposable {
         concat.dispose();
     }
 
-    private getConcatFromOutgoingUri(
-        outgoingUri: protocol.TextDocumentIdentifier | string
+    private getConcatDocumentForUri(input: protocol.TextDocumentIdentifier | vscodeUri.URI | string) {
+        const uri = this.toURI(input);
+
+        return isNotebookCell(uri) ? this.getConcatDocument(uri) : this.getConcatFromOutgoingUri(uri);
+    }
+
+    public getConcatFromOutgoingUri(
+        concatDocIdOrUri: protocol.TextDocumentIdentifier | string | vscodeUri.URI
     ): NotebookConcatDocument | undefined {
-        const uri = this.toURI(outgoingUri);
+        const uri = this.toURI(concatDocIdOrUri);
         return this.activeConcatsOutgoingMap.get(NotebookConverter.getDocumentKey(uri));
     }
 
     // Public for testing
-    public getConcatDocument(cell: protocol.TextDocumentIdentifier | string): NotebookConcatDocument {
-        const uri = this.toURI(cell);
+    public getConcatDocument(
+        cellIdOrUri: protocol.TextDocumentIdentifier | string | vscodeUri.URI
+    ): NotebookConcatDocument {
+        const uri = this.toURI(cellIdOrUri);
         const key = NotebookConverter.getDocumentKey(uri);
         let result = this.activeConcats.get(key);
         if (!result) {
