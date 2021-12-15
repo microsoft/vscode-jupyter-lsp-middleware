@@ -18,11 +18,11 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 You might want to setup an npm link for the python repository
 
-- git clone https://github.com/microsoft/vscode-python.git
+- git clone https://github.com/microsoft/vscode-jupyter.git
 - git clone https://github.com/microsoft/vscode-jupyter-lsp-middleware.git
 - cd vscode-jupyter-lsp-middleware
 - npm link
-- cd ..\vscode-python
+- cd ..\vscode-jupyter
 - npm link @vscode/jupyter-lsp-middleware (the name of the node module in python)
 
 Then to build vscode-jupyter-lsp-middleware
@@ -30,13 +30,13 @@ Then to build vscode-jupyter-lsp-middleware
 - npm run download-api (updates vscode.d.ts)
 - npm run webpack (which will setup stuff for using with vscode-python)
 
-### Directions for debugging with python extension
+### Directions for debugging with jupyter extension
 
 - Run the steps above for getting the npm link setup
-- From with VS code, open both python and lsp-middleware as two folders
+- From with VS code, open both jupyter and lsp-middleware as two folders
 - Build the 'webpack link' task for lsp-middleware
-- Build the compile task for python
-- Set breakpoints in the dist/index.js file while debugging (it's a development webpack)
+- Build the compile task for jupyter
+- Set breakpoints in the dist/node/index.js file while debugging (it's a development webpack)
 - Edit lsp code
 - Rerun the 'webpack link' build every time (it doesn't watch as it runs a post build step)
 
