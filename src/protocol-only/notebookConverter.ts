@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import * as os from 'os';
 import * as vscodeUri from 'vscode-uri';
 import * as protocol from 'vscode-languageserver-protocol';
 
@@ -21,9 +20,9 @@ export class NotebookConverter implements IDisposable {
 
     private mapOfConcatDocumentsWithCellUris = new Map<string, string[]>();
 
-    constructor(private getNotebookHeader: (uri: vscodeUri.URI) => string) {}
+    constructor(private getNotebookHeader: (uri: vscodeUri.URI) => string, private platformGetter: () => string) {}
 
-    private static getDocumentKey(uri: vscodeUri.URI): string {
+    private getDocumentKey(uri: vscodeUri.URI): string {
         if (uri.scheme === InteractiveInputScheme) {
             // input
             const counter = /InteractiveInput-(\d+)/.exec(uri.path);
@@ -37,7 +36,7 @@ export class NotebookConverter implements IDisposable {
         }
 
         // Use the path of the doc uri. It should be the same for all cells
-        if (os.platform() === 'win32') {
+        if (this.platformGetter() === 'win32') {
             return uri.fsPath.toLowerCase();
         }
         return uri.fsPath;
@@ -62,7 +61,7 @@ export class NotebookConverter implements IDisposable {
         const results = concat?.handleOpen(ev);
 
         // concat uri is empty until a cell is added.
-        this.activeConcatsOutgoingMap.set(NotebookConverter.getDocumentKey(concat.concatUri), concat);
+        this.activeConcatsOutgoingMap.set(this.getDocumentKey(concat.concatUri), concat);
         return results;
     }
 
@@ -692,7 +691,7 @@ export class NotebookConverter implements IDisposable {
 
     public remove(cell: protocol.TextDocumentIdentifier) {
         const uri = this.toURI(cell);
-        const key = NotebookConverter.getDocumentKey(uri);
+        const key = this.getDocumentKey(uri);
         const concat = this.activeConcats.get(key);
         if (concat) {
             this.deleteConcatDocument(concat);
@@ -904,7 +903,7 @@ export class NotebookConverter implements IDisposable {
 
     private deleteConcatDocument(concat: NotebookConcatDocument) {
         // Cleanup both maps and dispose of the concat (disconnects the cell change emitter)
-        this.activeConcatsOutgoingMap.delete(NotebookConverter.getDocumentKey(concat.concatUri));
+        this.activeConcatsOutgoingMap.delete(this.getDocumentKey(concat.concatUri));
         this.activeConcats.delete(concat.key);
         concat.dispose();
     }
@@ -919,7 +918,7 @@ export class NotebookConverter implements IDisposable {
         concatDocIdOrUri: protocol.TextDocumentIdentifier | string | vscodeUri.URI
     ): NotebookConcatDocument | undefined {
         const uri = this.toURI(concatDocIdOrUri);
-        return this.activeConcatsOutgoingMap.get(NotebookConverter.getDocumentKey(uri));
+        return this.activeConcatsOutgoingMap.get(this.getDocumentKey(uri));
     }
 
     // Public for testing
@@ -927,7 +926,7 @@ export class NotebookConverter implements IDisposable {
         cellIdOrUri: protocol.TextDocumentIdentifier | string | vscodeUri.URI
     ): NotebookConcatDocument {
         const uri = this.toURI(cellIdOrUri);
-        const key = NotebookConverter.getDocumentKey(uri);
+        const key = this.getDocumentKey(uri);
         let result = this.activeConcats.get(key);
         if (!result) {
             result = new NotebookConcatDocument(key, this.getNotebookHeader);
