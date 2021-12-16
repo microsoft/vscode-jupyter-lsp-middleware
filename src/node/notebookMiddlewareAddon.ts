@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import * as protocol from 'vscode-languageclient';
 import * as protocolNode from 'vscode-languageclient/node';
+import * as os from 'os';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
@@ -46,7 +47,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         private readonly isDocumentAllowed: (uri: vscode.Uri) => boolean,
         getNotebookHeader: (uri: vscode.Uri) => string
     ) {
-        this.converter = new NotebookConverter(getNotebookHeader);
+        this.converter = new NotebookConverter(getNotebookHeader, () => os.platform());
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
