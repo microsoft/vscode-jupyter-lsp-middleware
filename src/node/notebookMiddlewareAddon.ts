@@ -5,7 +5,7 @@ import * as protocol from 'vscode-languageclient';
 import * as protocolNode from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
-import { asRefreshEvent, isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
+import { isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
 import { NotebookConverter } from '../protocol-only/notebookConverter';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
@@ -26,7 +26,7 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
-import { score } from '../common/utils';
+import { asRefreshEvent, score } from '../common/vscodeUtils';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.

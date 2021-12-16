@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { DocumentSelector, languages, TextDocument, Uri, NotebookDocument } from 'vscode';
-import { RefreshNotebookEvent } from './types';
+import { URI } from 'vscode-uri';
 
 export const NotebookScheme = 'vscode-notebook';
 export const NotebookCellScheme = 'vscode-notebook-cell';
@@ -28,20 +27,11 @@ export function isEqual(a: string[], b: string[]): boolean {
     return true;
 }
 
-function isUri(resource?: Uri | any): resource is Uri {
-    if (!resource) {
-        return false;
-    }
-    const uri = resource as Uri;
-    return typeof uri.path === 'string' && typeof uri.scheme === 'string';
-}
-
-export function isNotebookCell(documentOrUri: TextDocument | Uri): boolean {
-    const uri = isUri(documentOrUri) ? documentOrUri : documentOrUri.uri;
+export function isNotebookCell(uri: URI): boolean {
     return uri.scheme.includes(NotebookCellScheme) || uri.scheme.includes(InteractiveInputScheme);
 }
 
-export function isInteractiveCell(cellUri: Uri): boolean {
+export function isInteractiveCell(cellUri: URI): boolean {
     return (
         cellUri.fragment.includes(InteractiveScheme) ||
         cellUri.scheme.includes(InteractiveInputScheme) ||
@@ -54,10 +44,6 @@ export function splitLines(str: string): string[] {
     return lines.slice(0, lines.length - 1); // Skip last empty item
 }
 
-export function score(document: TextDocument, selector: DocumentSelector): number {
-    return languages.match(selector, document);
-}
-
 export function findLastIndex<T>(array: Array<T>, predicate: (e: T) => boolean) {
     for (let i = array.length - 1; i >= 0; i--) {
         if (predicate(array[i])) {
@@ -65,22 +51,4 @@ export function findLastIndex<T>(array: Array<T>, predicate: (e: T) => boolean) 
         }
     }
     return -1;
-}
-
-export function asRefreshEvent(notebook: NotebookDocument, selector: DocumentSelector): RefreshNotebookEvent {
-    return {
-        cells: notebook
-            .getCells()
-            .filter((c) => score(c.document, selector) > 0)
-            .map((c) => {
-                return {
-                    textDocument: {
-                        uri: c.document.uri.toString(),
-                        text: c.document.getText(),
-                        languageId: c.document.languageId,
-                        version: c.document.version
-                    }
-                };
-            })
-    };
 }

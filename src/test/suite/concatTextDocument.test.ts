@@ -8,9 +8,10 @@ import * as path from 'path';
 import * as protocol from 'vscode-languageclient';
 import { generateConcat, InteractiveScheme, mockTextDocument, withTestNotebook } from './helper';
 import { TextDocument, NotebookCellKind, NotebookDocument, Uri, DocumentFilter, NotebookCell } from 'vscode';
-import { asRefreshEvent, InteractiveInputScheme, score } from '../../common/utils';
+import { InteractiveInputScheme } from '../../common/utils';
 import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 import { createLocation, createPosition, createRange } from '../../protocol-only/helper';
+import { asRefreshEvent, score } from '../../common/vscodeUtils';
 
 const HeaderText = 'import IPython\nIPython.get_ipython()';
 
