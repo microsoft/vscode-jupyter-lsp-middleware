@@ -96,8 +96,8 @@ import {
     DocumentSemanticsTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
-import { RefreshNotebookEvent } from '../protocol-only/types';
 import { score } from '../common/vscodeUtils';
+import type * as concat from '@vscode/lsp-notebook-concat/dist/types';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -203,7 +203,7 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
                         }
                     };
                 });
-            const params: RefreshNotebookEvent = {
+            const params: concat.RefreshNotebookEvent = {
                 cells
             };
             client.sendNotification('notebook/refresh', params);

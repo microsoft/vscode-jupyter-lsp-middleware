@@ -8,7 +8,6 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as tmp from 'tmp';
 import * as vscode from 'vscode';
-import { IDisposable } from '../../protocol-only/types';
 import * as vslc from 'vscode-languageclient/node';
 import {
     ClientCapabilities,
@@ -31,7 +30,6 @@ import {
 } from '../../node';
 import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
-import { NotebookConcatDocument } from '../../protocol-only/notebookConcatDocument';
 
 export interface Ctor<T> {
     new (): T;
@@ -314,7 +312,7 @@ export async function deleteAllCellsAndWait() {
 export async function createTemporaryFile(options: {
     templateFile: string;
     dir: string;
-}): Promise<{ file: string } & IDisposable> {
+}): Promise<{ file: string } & vscode.Disposable> {
     const extension = path.extname(options.templateFile);
     const tempFile = tmp.tmpNameSync({ postfix: extension, dir: options.dir });
     await fs.copyFile(options.templateFile, tempFile);
@@ -323,7 +321,7 @@ export async function createTemporaryFile(options: {
 
 export async function createTemporaryNotebook(
     templateFile: string,
-    disposables: IDisposable[],
+    disposables: vscode.Disposable[],
     kernelName: string = 'Python 3'
 ): Promise<string> {
     const extension = path.extname(templateFile);
@@ -451,7 +449,7 @@ export async function closeActiveNotebooks(): Promise<void> {
     await sleep(2_000);
 }
 
-export async function closeNotebooksAndCleanUpAfterTests(disposables: IDisposable[] = []) {
+export async function closeNotebooksAndCleanUpAfterTests(disposables: vscode.Disposable[] = []) {
     clearOutputMessages();
     await closeActiveWindows();
     disposeAllDisposables(disposables);
@@ -512,7 +510,7 @@ export async function waitForCondition(
     });
 }
 
-export async function closeNotebooks(disposables: IDisposable[] = []) {
+export async function closeNotebooks(disposables: vscode.Disposable[] = []) {
     if (!isInsiders()) {
         return false;
     }
@@ -527,7 +525,7 @@ export async function closeNotebooks(disposables: IDisposable[] = []) {
  * when creating a new notebook.
  * This function ensures we always open a notebook for testing that is guaranteed to use a Python kernel.
  */
-export async function createEmptyPythonNotebook(disposables: IDisposable[] = []) {
+export async function createEmptyPythonNotebook(disposables: vscode.Disposable[] = []) {
     const templatePythonNbFile = path.join(EXTENSION_ROOT_DIR_FOR_TESTS, 'suite/emptyPython.ipynb');
     // Don't use same file (due to dirty handling, we might save in dirty.)
     // Coz we won't save to file, hence extension will backup in dirty file and when u re-open it will open from dirty.
@@ -1010,27 +1008,4 @@ export async function createLanguageServer(
             notebookHeader
         );
     }
-}
-
-export function generateConcat(notebook: vscode.NotebookDocument, extraCells?: vscode.TextDocument[]) {
-    const concat = new NotebookConcatDocument(notebook.uri.toString(), () => '');
-    const converter = (d: vscode.TextDocument) => {
-        const result: vslc.DidOpenTextDocumentParams = {
-            textDocument: {
-                uri: d.uri.toString(),
-                languageId: d.languageId,
-                version: d.version,
-                text: d.getText()
-            }
-        };
-        return result;
-    };
-    notebook
-        .getCells()
-        .filter((c) => c.document.languageId === 'python' || c.document.uri.scheme === InteractiveInputScheme)
-        .forEach((c) => concat.handleOpen(converter(c.document)));
-    if (extraCells) {
-        extraCells.forEach((c) => concat.handleOpen(converter(c)));
-    }
-    return concat;
 }

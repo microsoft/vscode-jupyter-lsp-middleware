@@ -7,7 +7,7 @@ import * as os from 'os';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
 import { isInteractiveCell, isNotebookCell, isThenable } from '../common/utils';
-import { NotebookConverter } from '../protocol-only/notebookConverter';
+import * as concat from '@vscode/lsp-notebook-concat';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
 import { ProvideImplementationSignature } from 'vscode-languageclient/lib/common/implementation';
 import {
@@ -28,6 +28,7 @@ import {
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 import { asRefreshEvent, score } from '../common/vscodeUtils';
+import type { NotebookConverter } from '@vscode/lsp-notebook-concat/dist/notebookConverter';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -47,7 +48,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         private readonly isDocumentAllowed: (uri: vscode.Uri) => boolean,
         getNotebookHeader: (uri: vscode.Uri) => string
     ) {
-        this.converter = new NotebookConverter(getNotebookHeader, () => os.platform());
+        this.converter = concat.createConverter(getNotebookHeader, () => os.platform());
 
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
