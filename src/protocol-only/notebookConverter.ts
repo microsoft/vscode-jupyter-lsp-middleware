@@ -52,8 +52,14 @@ export class NotebookConverter implements IDisposable {
     }
 
     public isOpen(cell: protocol.TextDocumentIdentifier): boolean | undefined {
-        const concat = this.getConcatDocument(cell);
-        return concat.isOpen;
+        const uri = this.toURI(cell);
+        const key = this.getDocumentKey(uri);
+        const result = this.activeConcats.get(key);
+        if (!result) {
+            return false;
+        }
+
+        return result.isOpen;
     }
 
     public handleOpen(ev: protocol.DidOpenTextDocumentParams) {
