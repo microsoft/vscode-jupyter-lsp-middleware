@@ -38,6 +38,7 @@ import {
     SignatureHelpContext,
     SymbolInformation,
     TextDocument,
+    TextDocumentChangeEvent,
     TextEdit,
     Uri,
     WorkspaceEdit
@@ -92,10 +93,39 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
     constructor() {
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
+        this.didOpen = this.didOpen.bind(this);
+        this.didSave = this.didSave.bind(this);
+        this.didChange = this.didChange.bind(this);
+        this.didClose = this.didClose.bind(this);
     }
 
     public dispose(): void {
         // Nothing to dispose at the moment
+    }
+
+    public didChange(event: TextDocumentChangeEvent, next: (ev: TextDocumentChangeEvent) => void): void {
+        if (!isNotebookCell(event.document.uri)) {
+            next(event);
+        }
+    }
+
+    public didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
+        if (!isNotebookCell(document.uri)) {
+            next(document);
+        }
+    }
+
+    public didClose(document: TextDocument, next: (ev: TextDocument) => void) {
+        if (!isNotebookCell(document.uri)) {
+            next(document);
+        }
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    public didSave(event: TextDocument, next: (ev: TextDocument) => void): void {
+        if (!isNotebookCell(event.uri)) {
+            next(event);
+        }
     }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
