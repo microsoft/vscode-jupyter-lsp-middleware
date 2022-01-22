@@ -115,6 +115,7 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
         // Make sure a bunch of functions are bound to this. VS code can call them without a this context
         this.handleDiagnostics = this.handleDiagnostics.bind(this);
         this.didOpen = this.didOpen.bind(this);
+        this.didClose = this.didClose.bind(this);
     }
 
     public workspace = {
@@ -183,7 +184,15 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
     }
 
     public didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
-        next(document);
+        if (this.shouldProvideIntellisense(document.uri)) {
+            next(document);
+        }
+    }
+
+    public didClose(document: TextDocument, next: (ev: TextDocument) => void) {
+        if (this.shouldProvideIntellisense(document.uri)) {
+            next(document);
+        }
     }
 
     public refresh(notebook: NotebookDocument) {
