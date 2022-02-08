@@ -139,6 +139,10 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
                     settings[i].notebookHeader = this.getNotebookHeader(
                         item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
                     );
+
+                    // Always disable indexing on notebook. User can't use
+                    // auto import on notebook anyway.
+                    settings[i].analysis.indexing = false;
                 }
             }
 
