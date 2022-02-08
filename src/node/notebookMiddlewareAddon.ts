@@ -78,6 +78,10 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
             for (const [i, item] of params.items.entries()) {
                 if (item.section === 'python') {
                     settings[i].pythonPath = this.pythonPath;
+
+                    // Always disable indexing on notebook. User can't use
+                    // auto import on notebook anyway.
+                    settings[i].analysis.indexing = false;
                 }
             }
 
