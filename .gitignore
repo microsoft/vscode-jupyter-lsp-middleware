@@ -353,3 +353,5 @@ node_modules
 out/
 dist/
 .vscode-test/
+vscode.d.ts
+vscode.proposed.*.d.ts
