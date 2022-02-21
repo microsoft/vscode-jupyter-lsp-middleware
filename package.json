@@ -15,17 +15,17 @@
         "webpack": "webpack --mode production && node ./scripts/optimizeTypings.js",
         "webpack-link": "webpack --mode development && node ./scripts/optimizeTypings.js",
         "webpack-dev": "webpack --mode development --watch",
-		"postinstall": "npm run download-api"
+        "postinstall": "npm run download-api"
     },
     "author": "Visual Studio Code Team",
     "license": "MIT",
     "engines": {
         "vscode": "^1.64.0"
     },
-	"enabledApiProposals": [
-		"notebookEditor",
-		"notebookEditorEdit"
-	],
+    "enabledApiProposals": [
+        "notebookEditor",
+        "notebookEditorEdit"
+    ],
     "dependencies": {
         "@vscode/lsp-notebook-concat": "^0.1.6",
         "fast-myers-diff": "^3.0.1",
