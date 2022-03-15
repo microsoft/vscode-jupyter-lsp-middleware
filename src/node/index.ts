@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import { Disposable, DocumentSelector, NotebookDocument, Uri } from 'vscode';
-import { LanguageClient, Middleware } from 'vscode-languageclient/node';
+import { Disposable, NotebookDocument, Uri } from 'vscode';
+import { DocumentSelector, LanguageClient, Middleware } from 'vscode-languageclient/node';
 
 import { HidingMiddlewareAddon } from './hidingMiddlewareAddon';
 import { NotebookMiddlewareAddon } from './notebookMiddlewareAddon';
