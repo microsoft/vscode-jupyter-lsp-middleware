@@ -4,7 +4,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 import { assert } from 'chai';
 import { Position, Disposable, languages, Range, WorkspaceEdit, workspace, Uri } from 'vscode';
-import { DocumentFilter } from 'vscode-languageserver-protocol';
 import {
     canRunNotebookTests,
     closeNotebooksAndCleanUpAfterTests,
@@ -22,10 +21,6 @@ import {
 export const PYTHON_LANGUAGE = 'python';
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
-export const NOTEBOOK_SELECTOR: DocumentFilter[] = [
-    { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
-    { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
-];
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Pylance tests', function () {
@@ -47,7 +42,6 @@ suite('Pylance tests', function () {
         }
         languageServer = await createLanguageServer(
             'lsp-middleware-test',
-            NOTEBOOK_SELECTOR,
             'pylance',
             shouldProvideIntellisense,
             () => ''
