@@ -136,15 +136,15 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
 
             for (const [i, item] of params.items.entries()) {
                 if (item.section === 'python') {
-                    const settingsObj = settings[i] as LSPObject;
-                    settingsObj.pythonPath = this.pythonPath;
-                    settingsObj.notebookHeader = this.getNotebookHeader(
-                        item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
-                    );
+                    (settings[i] as any).pythonPath = this.pythonPath;
 
                     // Always disable indexing on notebook. User can't use
                     // auto import on notebook anyway.
-                    (settingsObj.analysis as LSPObject).indexing = false;
+                    ((settings[i] as any).analysis as LSPObject).indexing = false;
+
+                    (settings[i] as any).notebookHeader = this.getNotebookHeader(
+                        item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
+                    );
                 }
             }
 

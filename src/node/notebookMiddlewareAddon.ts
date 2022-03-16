@@ -78,12 +78,11 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
             for (const [i, item] of params.items.entries()) {
                 if (item.section === 'python') {
-                    const settingsObj = settings[i] as LSPObject;
-                    settingsObj.pythonPath = this.pythonPath;
+                    (settings[i] as any).pythonPath = this.pythonPath;
 
                     // Always disable indexing on notebook. User can't use
                     // auto import on notebook anyway.
-                    (settingsObj.analysis as LSPObject).indexing = false;
+                    ((settings[i] as any).analysis as LSPObject).indexing = false;
                 }
             }
 
@@ -573,7 +572,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         return next(link, token);
     }
 
-    public async handleDiagnostics(
+    public handleDiagnostics(
         uri: vscode.Uri,
         diagnostics: vscode.Diagnostic[],
         next: protocol.HandleDiagnosticsSignature
@@ -589,27 +588,26 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
                 this.shouldProvideIntellisense(incomingUri) &&
                 !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
             ) {
-                const protocolDiagnostics = await client.code2ProtocolConverter.asDiagnostics(diagnostics);
+                client.code2ProtocolConverter.asDiagnostics(diagnostics).then((protocolDiagnostics) => {
+                    // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+                    // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+                    // Otherwise old messages for cells that didn't change this time won't go away.
+                    const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri.toString(), protocolDiagnostics);
 
-                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-                // Otherwise old messages for cells that didn't change this time won't go away.
-                const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri.toString(), protocolDiagnostics);
-                return Promise.all(
                     [...newDiagMapping.keys()].map(async (k) =>
                         next(
                             vscode.Uri.parse(k),
                             await client.protocol2CodeConverter.asDiagnostics(newDiagMapping.get(k)!)
                         )
-                    )
-                );
+                    );
+                });
             } else {
                 // Swallow all other diagnostics
-                return next(uri, []);
+                next(uri, []);
             }
         } catch (e) {
             this.traceInfo(`Error during handling diagnostics: ${e}`);
-            return next(uri, []);
+            next(uri, []);
         }
     }
 
