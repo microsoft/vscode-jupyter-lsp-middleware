@@ -23,7 +23,6 @@
         "vscode": "^1.65.0"
     },
     "enabledApiProposals": [
-        "notebookEditor",
         "notebookEditorEdit"
     ],
     "dependencies": {
@@ -52,7 +51,7 @@
         "sinon": "^11.1.2",
         "tmp": "^0.2.1",
         "ts-loader": "^7.0.5",
-        "typescript": "^4.3.5",
+        "typescript": "^4.6.2",
         "uuid": "^3.4.0",
         "vscode-dts": "^0.3.3",
         "vscode-test": "^1.3.0",
