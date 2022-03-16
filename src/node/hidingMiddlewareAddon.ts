@@ -103,28 +103,28 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
         // Nothing to dispose at the moment
     }
 
-    public didChange(event: TextDocumentChangeEvent, next: (ev: TextDocumentChangeEvent) => void): void {
+    public async didChange(event: TextDocumentChangeEvent, next: (ev: TextDocumentChangeEvent) => void) {
         if (!isNotebookCell(event.document.uri)) {
-            next(event);
+            return next(event);
         }
     }
 
-    public didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
+    public async didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
         if (!isNotebookCell(document.uri)) {
-            next(document);
+            return next(document);
         }
     }
 
-    public didClose(document: TextDocument, next: (ev: TextDocument) => void) {
+    public async didClose(document: TextDocument, next: (ev: TextDocument) => void) {
         if (!isNotebookCell(document.uri)) {
-            next(document);
+            return next(document);
         }
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public didSave(event: TextDocument, next: (ev: TextDocument) => void): void {
+    public async didSave(event: TextDocument, next: (ev: TextDocument) => void) {
         if (!isNotebookCell(event.uri)) {
-            next(event);
+            return next(event);
         }
     }
 

@@ -16,7 +16,6 @@ import {
     Uri,
     DocumentHighlight
 } from 'vscode';
-import { DocumentFilter } from 'vscode-languageserver-protocol';
 import {
     canRunNotebookTests,
     closeNotebooksAndCleanUpAfterTests,
@@ -40,10 +39,6 @@ import {
 export const PYTHON_LANGUAGE = 'python';
 export const NotebookCellScheme = 'vscode-notebook-cell';
 export const InteractiveInputScheme = 'vscode-interactive-input';
-export const NOTEBOOK_SELECTOR: DocumentFilter[] = [
-    { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
-    { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
-];
 
 /* eslint-disable @typescript-eslint/no-explicit-any, no-invalid-this */
 suite('Notebook tests', function () {
@@ -65,7 +60,6 @@ suite('Notebook tests', function () {
         }
         languageServer = await createLanguageServer(
             'lsp-middleware-test',
-            NOTEBOOK_SELECTOR,
             'notebook',
             shouldProvideIntellisense,
             () => 'xlist = [4]'

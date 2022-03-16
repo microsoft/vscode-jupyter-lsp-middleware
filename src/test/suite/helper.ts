@@ -979,7 +979,6 @@ async function startLanguageServer(
 
 export async function createLanguageServer(
     outputChannel: string,
-    selector: DocumentSelector,
     middlewareType: MiddlewareType,
     shouldProvideIntellisense: (uri: vscode.Uri) => boolean,
     notebookHeader: () => string
@@ -998,12 +997,24 @@ export async function createLanguageServer(
 
     // If it is, use it to start the language server
     if (pylance) {
+        const newFilter: vslc.NotebookCellTextDocumentFilter = {
+            notebookDocument: {
+                notebookType: 'jupyter'
+            },
+            cellLanguage: 'python',
+            sync: true // Is this a bug?
+        } as any;
+        const oldFilter: vslc.DocumentFilter[] = [
+            { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
+            { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
+        ];
+
         return startLanguageServer(
             outputChannel,
             path.join(pylance.extensionPath, 'dist'),
             middlewareType,
             pythonPath,
-            selector,
+            [newFilter, ...oldFilter],
             shouldProvideIntellisense,
             notebookHeader
         );

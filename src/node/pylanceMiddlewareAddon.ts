@@ -22,7 +22,6 @@ import {
     DocumentHighlight,
     DocumentLink,
     DocumentSymbol,
-    DocumentSelector,
     FoldingContext,
     FoldingRange,
     FormattingOptions,
@@ -50,8 +49,10 @@ import {
     DidCloseTextDocumentNotification,
     DidOpenTextDocumentNotification,
     DidOpenTextDocumentParams,
+    DocumentSelector,
     HandleDiagnosticsSignature,
     LanguageClient,
+    LSPObject,
     Middleware,
     PrepareRenameSignature,
     ProvideCodeActionsSignature,
@@ -135,14 +136,15 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
 
             for (const [i, item] of params.items.entries()) {
                 if (item.section === 'python') {
-                    settings[i].pythonPath = this.pythonPath;
-                    settings[i].notebookHeader = this.getNotebookHeader(
-                        item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
-                    );
+                    (settings[i] as any).pythonPath = this.pythonPath;
 
                     // Always disable indexing on notebook. User can't use
                     // auto import on notebook anyway.
-                    settings[i].analysis.indexing = false;
+                    ((settings[i] as any).analysis as LSPObject).indexing = false;
+
+                    (settings[i] as any).notebookHeader = this.getNotebookHeader(
+                        item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
+                    );
                 }
             }
 
@@ -187,15 +189,15 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
         }
     }
 
-    public didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
+    public async didOpen(document: TextDocument, next: (ev: TextDocument) => void) {
         if (this.shouldProvideIntellisense(document.uri)) {
-            next(document);
+            await next(document);
         }
     }
 
-    public didClose(document: TextDocument, next: (ev: TextDocument) => void) {
+    public async didClose(document: TextDocument, next: (ev: TextDocument) => void) {
         if (this.shouldProvideIntellisense(document.uri)) {
-            next(document);
+            await next(document);
         }
     }
 

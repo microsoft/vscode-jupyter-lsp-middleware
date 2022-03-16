@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-import { DocumentSelector, languages, TextDocument, NotebookDocument } from 'vscode';
+import { DocumentSelector } from 'vscode-languageclient/node';
+import { languages, TextDocument, NotebookDocument } from 'vscode';
 import { RefreshNotebookEvent } from './types';
 
-export function score(document: TextDocument, selector: DocumentSelector): number {
-    return languages.match(selector, document);
+export function score(document: TextDocument, selector: DocumentSelector | string): number {
+    return languages.match(selector as any, document);
 }
 
-export function asRefreshEvent(notebook: NotebookDocument, selector: DocumentSelector): RefreshNotebookEvent {
+export function asRefreshEvent(notebook: NotebookDocument, selector: DocumentSelector | string): RefreshNotebookEvent {
     return {
         cells: notebook
             .getCells()

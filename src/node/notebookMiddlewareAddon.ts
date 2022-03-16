@@ -29,6 +29,7 @@ import {
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 import { asRefreshEvent, score } from '../common/vscodeUtils';
 import type { NotebookConverter } from '@vscode/lsp-notebook-concat/dist/notebookConverter';
+import { LSPObject } from 'vscode-languageclient';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -43,7 +44,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     constructor(
         private readonly getClient: () => protocolNode.LanguageClient | undefined,
         private readonly traceInfo: (...args: any[]) => void,
-        private cellSelector: string | vscode.DocumentSelector,
+        private cellSelector: string | protocolNode.DocumentSelector,
         private readonly pythonPath: string,
         private readonly isDocumentAllowed: (uri: vscode.Uri) => boolean,
         getNotebookHeader: (uri: vscode.Uri) => string
@@ -77,11 +78,11 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
             for (const [i, item] of params.items.entries()) {
                 if (item.section === 'python') {
-                    settings[i].pythonPath = this.pythonPath;
+                    (settings[i] as any).pythonPath = this.pythonPath;
 
                     // Always disable indexing on notebook. User can't use
                     // auto import on notebook anyway.
-                    settings[i].analysis.indexing = false;
+                    ((settings[i] as any).analysis as LSPObject).indexing = false;
                 }
             }
 
@@ -145,15 +146,15 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         // Mimic a document open for all cells
         if (client && notebook.cellCount > 0) {
             notebook.getCells().forEach((c) => {
-                this.didOpen(c.document, (ev) => {
+                this.didOpen(c.document, async (ev) => {
                     const params = client.code2ProtocolConverter.asOpenTextDocumentParams(ev);
-                    client.sendNotification(protocol.DidOpenTextDocumentNotification.type, params);
+                    await client.sendNotification(protocol.DidOpenTextDocumentNotification.type, params);
                 });
             });
         }
     }
 
-    public didChange(event: vscode.TextDocumentChangeEvent): void {
+    public async didChange(event: vscode.TextDocumentChangeEvent) {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
@@ -175,7 +176,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         }
     }
 
-    public didOpen(document: vscode.TextDocument, _next: (ev: vscode.TextDocument) => void): () => void {
+    public async didOpen(document: vscode.TextDocument, _next: (ev: vscode.TextDocument) => Promise<void>) {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
@@ -200,13 +201,9 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
                 client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
             }
         }
-
-        return () => {
-            // Do nothing
-        };
     }
 
-    public didClose(document: vscode.TextDocument, _next: (ev: vscode.TextDocument) => void): () => void {
+    public async didClose(document: vscode.TextDocument, _next: (ev: vscode.TextDocument) => void): Promise<void> {
         // We need to talk directly to the language client here.
         const client = this.getClient();
 
@@ -226,21 +223,18 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
                 client.sendNotification(protocol.DidChangeTextDocumentNotification.type, params);
             }
         }
-        return () => {
-            // Do nothing
-        };
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public didSave(event: vscode.TextDocument, next: (ev: vscode.TextDocument) => void): void {
+    public didSave(event: vscode.TextDocument, next: (ev: vscode.TextDocument) => Promise<void>) {
         return next(event);
     }
 
     // eslint-disable-next-line class-methods-use-this
     public willSave(
         event: vscode.TextDocumentWillSaveEvent,
-        next: (ev: vscode.TextDocumentWillSaveEvent) => void
-    ): void {
+        next: (ev: vscode.TextDocumentWillSaveEvent) => Promise<void>
+    ) {
         return next(event);
     }
 
@@ -582,7 +576,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         uri: vscode.Uri,
         diagnostics: vscode.Diagnostic[],
         next: protocol.HandleDiagnosticsSignature
-    ): void {
+    ) {
         try {
             const incomingUriString = this.converter.toNotebookUri(uri.toString());
             const incomingUri = incomingUriString ? vscode.Uri.parse(incomingUriString) : undefined;
@@ -594,15 +588,19 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
                 this.shouldProvideIntellisense(incomingUri) &&
                 !isInteractiveCell(incomingUri) // Skip diagnostics on the interactive window. Not particularly useful
             ) {
-                const protocolDiagnostics = client.code2ProtocolConverter.asDiagnostics(diagnostics);
+                client.code2ProtocolConverter.asDiagnostics(diagnostics).then((protocolDiagnostics) => {
+                    // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
+                    // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
+                    // Otherwise old messages for cells that didn't change this time won't go away.
+                    const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri.toString(), protocolDiagnostics);
 
-                // Remap any wrapped documents so that diagnostics appear in the cells. Note that if we
-                // get a diagnostics list for our concated document, we have to tell VS code about EVERY cell.
-                // Otherwise old messages for cells that didn't change this time won't go away.
-                const newDiagMapping = this.converter.toNotebookDiagnosticsMap(uri.toString(), protocolDiagnostics);
-                [...newDiagMapping.keys()].forEach((k) =>
-                    next(vscode.Uri.parse(k), client.protocol2CodeConverter.asDiagnostics(newDiagMapping.get(k)!))
-                );
+                    [...newDiagMapping.keys()].map(async (k) =>
+                        next(
+                            vscode.Uri.parse(k),
+                            await client.protocol2CodeConverter.asDiagnostics(newDiagMapping.get(k)!)
+                        )
+                    );
+                });
             } else {
                 // Swallow all other diagnostics
                 next(uri, []);
