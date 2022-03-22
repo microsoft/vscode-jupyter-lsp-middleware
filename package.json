@@ -1,6 +1,6 @@
 {
     "name": "@vscode/jupyter-lsp-middleware",
-    "version": "0.2.40",
+    "version": "0.2.41",
     "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
     "main": "dist/node/index.js",
     "types": "dist/node/index.d.ts",
@@ -10,12 +10,12 @@
         "compilewatch": "tsc -watch -p ./",
         "buildTests": "npm run download-api && npm run copyTestAssets && npm run compilewatch",
         "test": "npm run compile && npm run copyTestAssets && node ./out/test/runTest.js",
-        "download-api": "npx vscode-dts dev",
+        "download-api": "vscode-dts dev",
         "postdownload-api": "vscode-dts main",
         "webpack": "webpack --mode production && node ./scripts/optimizeTypings.js",
         "webpack-link": "webpack --mode development && node ./scripts/optimizeTypings.js",
         "webpack-dev": "webpack --mode development --watch",
-        "postinstall": "npm run download-api"
+        "prepare": "npm run download-api"
     },
     "author": "Visual Studio Code Team",
     "license": "MIT",
