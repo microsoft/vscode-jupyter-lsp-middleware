@@ -1000,13 +1000,13 @@ export async function createLanguageServer(
 
     // If it is, use it to start the language server
     if (pylance) {
-        const newFilter: vslc.NotebookCellTextDocumentFilter = {
-            notebookDocument: {
-                notebookType: 'jupyter'
-            },
-            cellLanguage: 'python',
-            sync: true // Is this a bug?
-        } as any;
+        const newFilter: vslc.NotebookCellTextDocumentFilter = { 
+            notebook: { 
+                notebookType: 'jupyter-notebook',
+                pattern: '**/*.ipynb'
+            }, 
+            language: 'python' 
+        };
         const oldFilter: vslc.DocumentFilter[] = [
             { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
             { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
