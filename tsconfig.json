@@ -22,7 +22,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "removeComments": true,
-    "declaration": true
+    "declaration": true,
+    "skipLibCheck": true
   },
   "exclude": [
     "node_modules",

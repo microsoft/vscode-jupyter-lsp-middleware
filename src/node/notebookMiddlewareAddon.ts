@@ -30,6 +30,19 @@ import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/co
 import { asRefreshEvent, score } from '../common/vscodeUtils';
 import type { NotebookConverter } from '@vscode/lsp-notebook-concat/dist/notebookConverter';
 import { LSPObject } from 'vscode-languageclient';
+import { ProvideCompletionItemsSignature, ResolveCompletionItemSignature } from 'vscode-languageclient/lib/common/completion';
+import { ProvideCodeActionsSignature } from 'vscode-languageclient/lib/common/codeAction';
+import { ProvideCodeLensesSignature, ResolveCodeLensSignature } from 'vscode-languageclient/lib/common/codeLens';
+import { ProvideDefinitionSignature } from 'vscode-languageclient/lib/common/definition';
+import { ProvideDocumentHighlightsSignature } from 'vscode-languageclient/lib/common/documentHighlight';
+import { ProvideDocumentLinksSignature, ResolveDocumentLinkSignature } from 'vscode-languageclient/lib/common/documentLink';
+import { ProvideDocumentSymbolsSignature } from 'vscode-languageclient/lib/common/documentSymbol';
+import { ProvideDocumentFormattingEditsSignature, ProvideDocumentRangeFormattingEditsSignature, ProvideOnTypeFormattingEditsSignature } from 'vscode-languageclient/lib/common/formatting';
+import { ProvideHoverSignature } from 'vscode-languageclient/lib/common/hover';
+import { ProvideReferencesSignature } from 'vscode-languageclient/lib/common/reference';
+import { PrepareRenameSignature, ProvideRenameEditsSignature } from 'vscode-languageclient/lib/common/rename';
+import { ProvideSignatureHelpSignature } from 'vscode-languageclient/lib/common/signatureHelp';
+import { ProvideWorkspaceSymbolsSignature } from 'vscode-languageclient/lib/common/workspaceSymbol';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
@@ -252,7 +265,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         position: vscode.Position,
         context: vscode.CompletionContext,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideCompletionItemsSignature
+        _next: ProvideCompletionItemsSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -276,7 +289,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideHoverSignature
+        _next: ProvideHoverSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -297,7 +310,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public resolveCompletionItem(
         item: vscode.CompletionItem,
         token: vscode.CancellationToken,
-        next: protocol.ResolveCompletionItemSignature
+        next: ResolveCompletionItemSignature
     ): vscode.ProviderResult<vscode.CompletionItem> {
         // vscode.Range should have already been remapped.
 
@@ -311,7 +324,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         position: vscode.Position,
         context: vscode.SignatureHelpContext,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideSignatureHelpSignature
+        _next: ProvideSignatureHelpSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -333,7 +346,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideDefinitionSignature
+        _next: ProvideDefinitionSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -357,7 +370,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
             includeDeclaration: boolean;
         },
         token: vscode.CancellationToken,
-        _next: protocol.ProvideReferencesSignature
+        _next: ProvideReferencesSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -381,7 +394,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideDocumentHighlightsSignature
+        _next: ProvideDocumentHighlightsSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -401,7 +414,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public async provideDocumentSymbols(
         document: vscode.TextDocument,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideDocumentSymbolsSignature
+        _next: ProvideDocumentSymbolsSignature
     ) {
         const client = this.getClient();
         if (this.shouldProvideIntellisense(document.uri) && client) {
@@ -426,7 +439,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public async provideWorkspaceSymbols(
         query: string,
         token: vscode.CancellationToken,
-        _next: protocol.ProvideWorkspaceSymbolsSignature
+        _next: ProvideWorkspaceSymbolsSignature
     ) {
         const client = this.getClient();
         if (client) {
@@ -445,7 +458,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         _range: vscode.Range,
         _context: vscode.CodeActionContext,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideCodeActionsSignature
+        _next: ProvideCodeActionsSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideCodeActions not currently supported for notebooks');
@@ -457,7 +470,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public provideCodeLenses(
         document: vscode.TextDocument,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideCodeLensesSignature
+        _next: ProvideCodeLensesSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideCodeLenses not currently supported for notebooks');
@@ -469,7 +482,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public resolveCodeLens(
         codeLens: vscode.CodeLens,
         token: vscode.CancellationToken,
-        next: protocol.ResolveCodeLensSignature
+        next: ResolveCodeLensSignature
     ) {
         // vscode.Range should have already been remapped.
 
@@ -483,7 +496,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         document: vscode.TextDocument,
         _options: vscode.FormattingOptions,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideDocumentFormattingEditsSignature
+        _next: ProvideDocumentFormattingEditsSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentFormattingEdits not currently supported for notebooks');
@@ -497,7 +510,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         _range: vscode.Range,
         _options: vscode.FormattingOptions,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideDocumentRangeFormattingEditsSignature
+        _next: ProvideDocumentRangeFormattingEditsSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentRangeFormattingEdits not currently supported for notebooks');
@@ -512,7 +525,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         _ch: string,
         _options: vscode.FormattingOptions,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideOnTypeFormattingEditsSignature
+        _next: ProvideOnTypeFormattingEditsSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideOnTypeFormattingEdits not currently supported for notebooks');
@@ -526,7 +539,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         _position: vscode.Position,
         _newName: string,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideRenameEditsSignature
+        _next: ProvideRenameEditsSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideRenameEdits not currently supported for notebooks');
@@ -539,7 +552,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
         document: vscode.TextDocument,
         _position: vscode.Position,
         _token: vscode.CancellationToken,
-        _next: protocol.PrepareRenameSignature
+        _next: PrepareRenameSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('prepareRename not currently supported for notebooks');
@@ -551,7 +564,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public provideDocumentLinks(
         document: vscode.TextDocument,
         _token: vscode.CancellationToken,
-        _next: protocol.ProvideDocumentLinksSignature
+        _next: ProvideDocumentLinksSignature
     ) {
         if (this.shouldProvideIntellisense(document.uri)) {
             this.traceInfo('provideDocumentLinks not currently supported for notebooks');
@@ -563,7 +576,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
     public resolveDocumentLink(
         link: vscode.DocumentLink,
         token: vscode.CancellationToken,
-        next: protocol.ResolveDocumentLinkSignature
+        next: ResolveDocumentLinkSignature
     ) {
         // vscode.Range should have already been remapped.
 

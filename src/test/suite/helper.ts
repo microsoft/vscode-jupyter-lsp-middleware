@@ -714,12 +714,12 @@ export async function waitForCellChange(timeout = defaultNotebookTestTimeout) {
             reject(new Error(`Cell change didn't happen before timeout.`));
         }, timeout);
         pendingTimers.push(timer);
-        const handler = (_e: vscode.NotebookCellsChangeEvent) => {
+        const handler = (_e: vscode.NotebookDocumentChangeEvent) => {
             clearTimeout(timer);
             disposable?.dispose();
             resolve();
         };
-        disposable = vscode.notebooks.onDidChangeNotebookCells(handler);
+        disposable = vscode.workspace.onDidChangeNotebookDocument(handler);
     });
 }
 
@@ -794,7 +794,6 @@ export const PYTHON = [
 ];
 
 let languageClient: vslc.LanguageClient | undefined = undefined;
-let languageClientDisposable: vscode.Disposable | undefined = undefined;
 let cancellationStrategy: FileBasedCancellationStrategy | undefined = undefined;
 
 function ensure(target: any, key: string) {
@@ -805,7 +804,8 @@ function ensure(target: any, key: string) {
 }
 
 class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegistrationOptions> {
-    private _commands: Map<string, vscode.Disposable[]> = new Map<string, vscode.Disposable[]>();
+    private readonly _commands: Map<string, vscode.Disposable[]> = new Map<string, vscode.Disposable[]>();
+    private readonly _id = uuid();
 
     constructor() {}
 
@@ -813,6 +813,17 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
         return ExecuteCommandRequest.type;
     }
 
+    fillInitializeParams = undefined;
+    preInitialize = undefined;
+
+    getState(): vslc.FeatureState {
+        return {
+            kind: 'workspace',
+            id: this._id,
+            registrations: true
+        }
+    }
+    
     public fillClientCapabilities(capabilities: ClientCapabilities): void {
         ensure(ensure(capabilities, 'workspace'), 'executeCommand').dynamicRegistration = true;
     }
@@ -822,7 +833,7 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
             return;
         }
         this.register({
-            id: uuid(),
+            id: this._id,
             registerOptions: Object.assign({}, capabilities.executeCommandProvider)
         });
     }
@@ -885,9 +896,9 @@ function createMiddleware(
 }
 
 function trackNotebookCellMovement(middleware: NotebookMiddleware): vscode.Disposable {
-    return vscode.notebooks.onDidChangeNotebookCells((e) => {
+    return vscode.workspace.onDidChangeNotebookDocument((e) => {
         // Translate notebook cell movement into refresh events
-        middleware.refresh(e.document);
+        middleware.refresh(e.notebook);
     });
 }
 
@@ -964,17 +975,9 @@ async function startLanguageServer(
     (languageClient as any)._features = minusCommands;
 
     // Then start (which will cause the initialize request to be sent to pylance)
-    languageClientDisposable = languageClient.start();
+    await languageClient.start();
 
-    // After starting, wait for it to be ready
-    while (languageClient && !languageClient.initializeResult) {
-        await sleep(100);
-    }
-    if (languageClient) {
-        await languageClient.onReady();
-    }
-
-    return new LanguageServer(languageClient, [languageClientDisposable, cancellationStrategy, trackingDisposable]);
+    return new LanguageServer(languageClient, [cancellationStrategy, trackingDisposable]);
 }
 
 export async function createLanguageServer(
@@ -997,13 +1000,13 @@ export async function createLanguageServer(
 
     // If it is, use it to start the language server
     if (pylance) {
-        const newFilter: vslc.NotebookCellTextDocumentFilter = {
-            notebookDocument: {
-                notebookType: 'jupyter'
-            },
-            cellLanguage: 'python',
-            sync: true // Is this a bug?
-        } as any;
+        const newFilter: vslc.NotebookCellTextDocumentFilter = { 
+            notebook: { 
+                notebookType: 'jupyter-notebook',
+                pattern: '**/*.ipynb'
+            }, 
+            language: 'python' 
+        };
         const oldFilter: vslc.DocumentFilter[] = [
             { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
             { scheme: InteractiveInputScheme, language: PYTHON_LANGUAGE }
