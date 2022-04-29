@@ -46,22 +46,6 @@ import {
 import {
     HandleDiagnosticsSignature,
     Middleware,
-    PrepareRenameSignature,
-    ProvideCodeActionsSignature,
-    ProvideCodeLensesSignature,
-    ProvideCompletionItemsSignature,
-    ProvideDefinitionSignature,
-    ProvideDocumentFormattingEditsSignature,
-    ProvideDocumentHighlightsSignature,
-    ProvideDocumentLinksSignature,
-    ProvideDocumentRangeFormattingEditsSignature,
-    ProvideDocumentSymbolsSignature,
-    ProvideHoverSignature,
-    ProvideOnTypeFormattingEditsSignature,
-    ProvideReferencesSignature,
-    ProvideRenameEditsSignature,
-    ProvideSignatureHelpSignature,
-    ResolveCompletionItemSignature
 } from 'vscode-languageclient/node';
 
 import { ProvideDeclarationSignature } from 'vscode-languageclient/lib/common/declaration';
@@ -85,6 +69,18 @@ import {
     DocumentRangeSemanticTokensSignature
 } from 'vscode-languageclient/lib/common/semanticTokens';
 import { ProvideTypeDefinitionSignature } from 'vscode-languageclient/lib/common/typeDefinition';
+import { ProvideHoverSignature } from 'vscode-languageclient/lib/common/hover';
+import { ProvideCompletionItemsSignature, ResolveCompletionItemSignature } from 'vscode-languageclient/lib/common/completion';
+import { ProvideDefinitionSignature } from 'vscode-languageclient/lib/common/definition';
+import { ProvideDocumentHighlightsSignature } from 'vscode-languageclient/lib/common/documentHighlight';
+import { ProvideReferencesSignature } from 'vscode-languageclient/lib/common/reference';
+import { ProvideDocumentSymbolsSignature } from 'vscode-languageclient/lib/common/documentSymbol';
+import { ProvideCodeActionsSignature } from 'vscode-languageclient/lib/common/codeAction';
+import { ProvideCodeLensesSignature } from 'vscode-languageclient/lib/common/codeLens';
+import { ProvideDocumentLinksSignature } from 'vscode-languageclient/lib/common/documentLink';
+import { ProvideDocumentFormattingEditsSignature, ProvideDocumentRangeFormattingEditsSignature, ProvideOnTypeFormattingEditsSignature } from 'vscode-languageclient/lib/common/formatting';
+import { ProvideRenameEditsSignature, PrepareRenameSignature } from 'vscode-languageclient/lib/common/rename';
+import { ProvideSignatureHelpSignature } from 'vscode-languageclient/lib/common/signatureHelp';
 
 /**
  * This class is used to hide all intellisense requests for notebook cells.

@@ -54,25 +54,6 @@ import {
     LanguageClient,
     LSPObject,
     Middleware,
-    PrepareRenameSignature,
-    ProvideCodeActionsSignature,
-    ProvideCodeLensesSignature,
-    ProvideCompletionItemsSignature,
-    ProvideDefinitionSignature,
-    ProvideDocumentFormattingEditsSignature,
-    ProvideDocumentHighlightsSignature,
-    ProvideDocumentLinksSignature,
-    ProvideDocumentRangeFormattingEditsSignature,
-    ProvideDocumentSymbolsSignature,
-    ProvideHoverSignature,
-    ProvideOnTypeFormattingEditsSignature,
-    ProvideReferencesSignature,
-    ProvideRenameEditsSignature,
-    ProvideSignatureHelpSignature,
-    ProvideWorkspaceSymbolsSignature,
-    ResolveCodeLensSignature,
-    ResolveCompletionItemSignature,
-    ResolveDocumentLinkSignature,
     ResponseError
 } from 'vscode-languageclient/node';
 
@@ -99,6 +80,19 @@ import {
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 import { score } from '../common/vscodeUtils';
 import type * as concat from '@vscode/lsp-notebook-concat/dist/types';
+import { ProvideCodeActionsSignature } from 'vscode-languageclient/lib/common/codeAction';
+import { ProvideCodeLensesSignature, ResolveCodeLensSignature } from 'vscode-languageclient/lib/common/codeLens';
+import { ProvideCompletionItemsSignature, ResolveCompletionItemSignature } from 'vscode-languageclient/lib/common/completion';
+import { ProvideDefinitionSignature } from 'vscode-languageclient/lib/common/definition';
+import { ProvideDocumentHighlightsSignature } from 'vscode-languageclient/lib/common/documentHighlight';
+import { ProvideDocumentLinksSignature, ResolveDocumentLinkSignature } from 'vscode-languageclient/lib/common/documentLink';
+import { ProvideDocumentSymbolsSignature } from 'vscode-languageclient/lib/common/documentSymbol';
+import { ProvideDocumentFormattingEditsSignature, ProvideDocumentRangeFormattingEditsSignature, ProvideOnTypeFormattingEditsSignature } from 'vscode-languageclient/lib/common/formatting';
+import { ProvideHoverSignature } from 'vscode-languageclient/lib/common/hover';
+import { ProvideReferencesSignature } from 'vscode-languageclient/lib/common/reference';
+import { ProvideRenameEditsSignature, PrepareRenameSignature } from 'vscode-languageclient/lib/common/rename';
+import { ProvideSignatureHelpSignature } from 'vscode-languageclient/lib/common/signatureHelp';
+import { ProvideWorkspaceSymbolsSignature } from 'vscode-languageclient/lib/common/workspaceSymbol';
 
 /**
  * This class is a temporary solution to handling intellisense and diagnostics in python based notebooks.
