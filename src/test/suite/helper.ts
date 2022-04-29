@@ -15,6 +15,7 @@ import {
     DynamicFeature,
     ExecuteCommandRegistrationOptions,
     ExecuteCommandRequest,
+    FeatureState,
     LanguageClient,
     RegistrationData,
     RegistrationType,
@@ -719,7 +720,7 @@ export async function waitForCellChange(timeout = defaultNotebookTestTimeout) {
             disposable?.dispose();
             resolve();
         };
-        disposable = vscode.notebooks.onDidChangeNotebookCells(handler);
+        disposable = vscode.notebooks.(handler);
     });
 }
 
@@ -844,6 +845,11 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
             value.forEach((disposable) => disposable.dispose());
         });
         this._commands.clear();
+    }
+    getState(): FeatureState {
+        return {
+            kind: 'static'
+        };
     }
 }
 

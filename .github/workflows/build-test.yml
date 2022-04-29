@@ -12,7 +12,7 @@ on:
     types: [rerequested, requested_action]
 
 env:
-  NODE_VERSION: 12.14.1
+  NODE_VERSION: 16.13.0
   IS_CI: 1
   SCREENSHOT_PATH: 'src/test/*-screenshot.png'
   PYLANCE_LOG_PATH: 'src/test/pylance-log.txt'

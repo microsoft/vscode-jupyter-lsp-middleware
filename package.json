@@ -1,6 +1,6 @@
 {
     "name": "@vscode/jupyter-lsp-middleware",
-    "version": "0.2.41",
+    "version": "0.2.42",
     "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
     "main": "dist/node/index.js",
     "types": "dist/node/index.d.ts",
@@ -20,10 +20,11 @@
     "author": "Visual Studio Code Team",
     "license": "MIT",
     "engines": {
-        "vscode": "^1.65.0"
+        "vscode": "^1.67.0"
     },
     "enabledApiProposals": [
-        "notebookEditorEdit"
+        "notebookEditorEdit",
+        "notebookEditor"
     ],
     "dependencies": {
         "@vscode/lsp-notebook-concat": "^0.1.8",
