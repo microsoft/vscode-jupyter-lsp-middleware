@@ -404,7 +404,7 @@ export class HidingMiddlewareAddon implements Middleware, Disposable {
 
     public provideSelectionRanges(
         document: TextDocument,
-        positions: Position[],
+        positions: readonly Position[],
         token: CancellationToken,
         next: ProvideSelectionRangeSignature
     ): ProviderResult<SelectionRange[]> {
