@@ -29,7 +29,6 @@ import {
 import { ProvideLinkedEditingRangeSignature } from 'vscode-languageclient/lib/common/linkedEditingRange';
 import { asRefreshEvent, score } from '../common/vscodeUtils';
 import type { NotebookConverter } from '@vscode/lsp-notebook-concat/dist/notebookConverter';
-import { LSPObject } from 'vscode-languageclient';
 import { ProvideCompletionItemsSignature, ResolveCompletionItemSignature } from 'vscode-languageclient/lib/common/completion';
 import { ProvideCodeActionsSignature } from 'vscode-languageclient/lib/common/codeAction';
 import { ProvideCodeLensesSignature, ResolveCodeLensSignature } from 'vscode-languageclient/lib/common/codeLens';
@@ -95,7 +94,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
                     // Always disable indexing on notebook. User can't use
                     // auto import on notebook anyway.
-                    ((settings[i] as any).analysis as LSPObject).indexing = false;
+                    (settings[i] as any).analysis.indexing = false;
                 }
             }
 
@@ -750,7 +749,7 @@ export class NotebookMiddlewareAddon implements protocol.Middleware, vscode.Disp
 
     public async provideSelectionRanges(
         document: vscode.TextDocument,
-        positions: vscode.Position[],
+        positions: readonly vscode.Position[],
         token: vscode.CancellationToken,
         _next: ProvideSelectionRangeSignature
     ) {

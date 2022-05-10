@@ -52,7 +52,6 @@ import {
     DocumentSelector,
     HandleDiagnosticsSignature,
     LanguageClient,
-    LSPObject,
     Middleware,
     ResponseError
 } from 'vscode-languageclient/node';
@@ -134,7 +133,7 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
 
                     // Always disable indexing on notebook. User can't use
                     // auto import on notebook anyway.
-                    ((settings[i] as any).analysis as LSPObject).indexing = false;
+                    (settings[i] as any).analysis.indexing = false;
 
                     (settings[i] as any).notebookHeader = this.getNotebookHeader(
                         item.scopeUri ? Uri.parse(item.scopeUri) : Uri.parse('')
@@ -533,7 +532,7 @@ export class PylanceMiddlewareAddon implements Middleware, Disposable {
 
     public provideSelectionRanges(
         document: TextDocument,
-        positions: Position[],
+        positions: readonly Position[],
         token: CancellationToken,
         next: ProvideSelectionRangeSignature
     ): ProviderResult<SelectionRange[]> {
