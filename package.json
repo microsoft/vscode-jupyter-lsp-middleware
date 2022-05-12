@@ -27,7 +27,7 @@
         "notebookEditor"
     ],
     "dependencies": {
-        "@vscode/lsp-notebook-concat": "^0.1.11",
+        "@vscode/lsp-notebook-concat": "^0.1.12",
         "fast-myers-diff": "^3.0.1",
         "sha.js": "^2.4.11",
         "vscode-languageclient": "^8.0.1",
