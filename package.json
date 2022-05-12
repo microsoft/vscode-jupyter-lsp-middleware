@@ -1,6 +1,6 @@
 {
     "name": "@vscode/jupyter-lsp-middleware",
-    "version": "0.2.44",
+    "version": "0.2.45",
     "description": "VS Code Python Language Server Middleware for Jupyter Notebook",
     "main": "dist/node/index.js",
     "types": "dist/node/index.d.ts",
@@ -30,8 +30,8 @@
         "@vscode/lsp-notebook-concat": "^0.1.11",
         "fast-myers-diff": "^3.0.1",
         "sha.js": "^2.4.11",
-        "vscode-languageclient": "^8.0.0",
-        "vscode-languageserver-protocol": "^3.17.0",
+        "vscode-languageclient": "^8.0.1",
+        "vscode-languageserver-protocol": "^3.17.1",
         "vscode-uri": "^3.0.2"
     },
     "devDependencies": {
