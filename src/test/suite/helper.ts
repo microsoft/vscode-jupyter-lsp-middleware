@@ -821,9 +821,9 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
             kind: 'workspace',
             id: this._id,
             registrations: true
-        }
+        };
     }
-    
+
     public fillClientCapabilities(capabilities: ClientCapabilities): void {
         ensure(ensure(capabilities, 'workspace'), 'executeCommand').dynamicRegistration = true;
     }
@@ -859,11 +859,20 @@ class NerfedExecuteCommandFeature implements DynamicFeature<ExecuteCommandRegist
 }
 
 export class LanguageServer implements vscode.Disposable {
-    constructor(public client: LanguageClient, private disposables: vscode.Disposable[]) {}
+    constructor(private disposables: vscode.Disposable[]) {}
 
     public async dispose() {
+        if (!languageClient) {
+            return;
+        }
+
+        // Make sure we set client undefined so that no one can
+        // call client while stopping.
+        const client = languageClient;
+        languageClient = undefined;
+
         this.disposables.forEach((d) => d.dispose());
-        await this.client.stop();
+        await client.stop();
     }
 }
 
@@ -966,18 +975,22 @@ async function startLanguageServer(
         }
     };
 
-    languageClient = new vslc.LanguageClient('lsp-middleware-test', serverOptions, clientOptions);
+    const client = new vslc.LanguageClient('lsp-middleware-test', serverOptions, clientOptions);
 
     // Before starting do a little hack to prevent the pylance double command registration (working with Jake to have an option to skip commands)
-    const features: (StaticFeature | DynamicFeature<any>)[] = (languageClient as any)._features;
+    const features: (StaticFeature | DynamicFeature<any>)[] = (client as any)._features;
     const minusCommands = features.filter((f) => (f as any).registrationType?.method != 'workspace/executeCommand');
     minusCommands.push(new NerfedExecuteCommandFeature());
-    (languageClient as any)._features = minusCommands;
+    (client as any)._features = minusCommands;
 
     // Then start (which will cause the initialize request to be sent to pylance)
-    await languageClient.start();
+    await client.start();
 
-    return new LanguageServer(languageClient, [cancellationStrategy, trackingDisposable]);
+    // Make sure we expose client once client is fully initialized. otherwise, some might
+    // start using client before it is fully initialized.
+    languageClient = client;
+
+    return new LanguageServer([cancellationStrategy, trackingDisposable]);
 }
 
 export async function createLanguageServer(
@@ -1000,12 +1013,12 @@ export async function createLanguageServer(
 
     // If it is, use it to start the language server
     if (pylance) {
-        const newFilter: vslc.NotebookCellTextDocumentFilter = { 
-            notebook: { 
+        const newFilter: vslc.NotebookCellTextDocumentFilter = {
+            notebook: {
                 notebookType: 'jupyter-notebook',
                 pattern: '**/*.ipynb'
-            }, 
-            language: 'python' 
+            },
+            language: 'python'
         };
         const oldFilter: vslc.DocumentFilter[] = [
             { scheme: NotebookCellScheme, language: PYTHON_LANGUAGE },
