@@ -31,7 +31,7 @@ const config = {
             vscode: 'commonjs vscode'
         },
         function ({ context, request }, callback) {
-            if (request?.startsWith('vscode-')) {
+            if (request && request.startsWith('vscode-')) {
                 // Externalize to a commonjs module using the request path
                 return callback(null, 'commonjs ' + request);
             }
