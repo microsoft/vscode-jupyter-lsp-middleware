@@ -12,7 +12,8 @@ on:
     types: [rerequested, requested_action]
 
 env:
-  NODE_VERSION: 12.14.1
+  NODE_VERSION: 16.14.2
+  NPM_VERSION: 8.15.1
   IS_CI: 1
   SCREENSHOT_PATH: 'src/test/*-screenshot.png'
   PYLANCE_LOG_PATH: 'src/test/pylance-log.txt'
@@ -40,6 +41,9 @@ jobs:
         with:
           node-version: ${{env.NODE_VERSION}}
 
+      - run: npm i -g npm@${{env.NPM_VERSION}}
+        name: npm install npm@8.15.1
+
       - run: npm install
         name: npm install
 
@@ -62,6 +66,9 @@ jobs:
         uses: actions/setup-node@v2.1.5
         with:
           node-version: ${{env.NODE_VERSION}}
+
+      - run: npm i -g npm@${{env.NPM_VERSION}}
+        name: npm install npm@8.15.1
 
       - run: npm install
         name: npm install
