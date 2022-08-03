@@ -12,6 +12,7 @@ on:
 
 env:
   NODE_VERSION: 12.14.1
+  NPM_VERSION: 8.15.1
 
 jobs:
   publish:
@@ -23,6 +24,9 @@ jobs:
         with:
           node-version: ${{env.NODE_VERSION}}
           registry-url: "https://registry.npmjs.org"
+
+      - run: npm i -g npm@${{env.NPM_VERSION}}
+        name: npm install npm@8.15.1
       - run: npm install
         name: npm install
       - run: npm run webpack
