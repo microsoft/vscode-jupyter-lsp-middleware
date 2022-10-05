@@ -250,8 +250,9 @@ export async function insertMarkdownCell(source: string, options?: { index?: num
         const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, source, MARKDOWN_LANGUAGE);
         cellData.outputs = [];
         cellData.metadata = {};
-        edit.replaceNotebookCells(activeEditor.document.uri, new vscode.NotebookRange(startNumber, startNumber), [
-            cellData
+        vscode;
+        edit.set(activeEditor.document.uri, [
+            vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(startNumber, startNumber), [cellData])
         ]);
     });
     return activeEditor.document.cellAt(startNumber)!;
@@ -270,8 +271,8 @@ export async function insertCodeCell(source: string, options?: { language?: stri
     );
     cellData.outputs = [];
     cellData.metadata = {};
-    edit.replaceNotebookCells(activeEditor.document.uri, new vscode.NotebookRange(startNumber, startNumber), [
-        cellData
+    edit.set(activeEditor.document.uri, [
+        vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(startNumber, startNumber), [cellData])
     ]);
     await vscode.workspace.applyEdit(edit);
 
@@ -287,7 +288,9 @@ export async function deleteCell(index: number = 0) {
         return;
     }
     await chainWithPendingUpdates(activeEditor.document, (edit) =>
-        edit.replaceNotebookCells(activeEditor.document.uri, new vscode.NotebookRange(index, index + 1), [])
+        edit.set(activeEditor.document.uri, [
+            vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(index, index + 1), [])
+        ])
     );
 }
 export async function deleteAllCellsAndWait() {
@@ -296,11 +299,9 @@ export async function deleteAllCellsAndWait() {
         return;
     }
     await chainWithPendingUpdates(activeEditor.document, (edit) =>
-        edit.replaceNotebookCells(
-            activeEditor.document.uri,
-            new vscode.NotebookRange(0, activeEditor.document.cellCount),
-            []
-        )
+        edit.set(activeEditor.document.uri, [
+            vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, activeEditor.document.cellCount), [])
+        ])
     );
 }
 
