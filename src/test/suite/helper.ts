@@ -22,12 +22,7 @@ import {
     ServerCapabilities,
     StaticFeature
 } from 'vscode-languageclient/node';
-import {
-    createNotebookMiddleware,
-    createHidingMiddleware,
-    createPylanceMiddleware,
-    NotebookMiddleware
-} from '../../node';
+import { createNotebookMiddleware, createHidingMiddleware, NotebookMiddleware } from '../../node';
 import { FileBasedCancellationStrategy } from '../../node/fileBasedCancellationStrategy';
 import * as uuid from 'uuid/v4';
 
@@ -876,7 +871,7 @@ export class LanguageServer implements vscode.Disposable {
     }
 }
 
-export type MiddlewareType = 'pylance' | 'hiding' | 'notebook';
+export type MiddlewareType = 'hiding' | 'notebook';
 
 function createMiddleware(
     middlewareType: MiddlewareType,
@@ -890,8 +885,6 @@ function createMiddleware(
     switch (middlewareType) {
         case 'hiding':
             return createHidingMiddleware();
-        case 'pylance':
-            return createPylanceMiddleware(getClient, cellSelector, pythonPath, isDocumentAllowed, notebookHeader);
         case 'notebook':
             return createNotebookMiddleware(
                 getClient,
